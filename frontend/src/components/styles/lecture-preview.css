@@ -1,0 +1,224 @@
+/* Модальное окно для предпросмотра лекции */
+.lecture-preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lecture-preview-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+  position: relative;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.lecture-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.lecture-preview-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #0b3d2c;
+  margin: 0;
+  background: linear-gradient(90deg, #0f6b51, #115b49);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #718096;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.btn-close-modal:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.lecture-preview-description {
+  padding: 1rem 2rem;
+  color: #4a5568;
+  margin: 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lecture-preview-content {
+  padding: 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Используем стили из lecture-view.css для материалов */
+.lecture-preview-content .material-item-view {
+  margin-bottom: 2rem;
+  background: #f8fffe;
+  border: 1px solid rgba(15, 107, 81, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.lecture-preview-content .material-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(15, 107, 81, 0.1);
+}
+
+.lecture-preview-content .material-number {
+  background: linear-gradient(135deg, #0f6b51, #115b49);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.lecture-preview-content .material-type-badge {
+  background: rgba(15, 107, 81, 0.1);
+  color: #0f6b51;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.lecture-preview-content .material-filename {
+  color: #2d3748;
+  font-weight: 500;
+  flex: 1;
+}
+
+.lecture-preview-content .video-player-wrapper {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.lecture-preview-content .video-player {
+  width: 100%;
+  max-height: 600px;
+  border-radius: 8px;
+  background: #000;
+}
+
+.lecture-preview-content .pdf-text-content {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+
+.lecture-preview-content .pdf-text-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.lecture-preview-content .pdf-text-body {
+  max-height: 500px;
+  overflow-y: auto;
+  line-height: 1.6;
+  color: #2d3748;
+}
+
+.lecture-preview-content .loading-file,
+.lecture-preview-content .error-file {
+  text-align: center;
+  padding: 2rem;
+  color: #718096;
+}
+
+.lecture-preview-content .empty-materials {
+  text-align: center;
+  padding: 3rem;
+  color: #718096;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .lecture-preview-overlay {
+    padding: 0;
+  }
+  
+  .lecture-preview-modal {
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  
+  .lecture-preview-header {
+    padding: 1rem;
+  }
+  
+  .lecture-preview-title {
+    font-size: 1.25rem;
+  }
+  
+  .lecture-preview-content {
+    padding: 1rem;
+  }
+}
+

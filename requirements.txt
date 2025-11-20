@@ -1,0 +1,12 @@
+fastapi
+sqlalchemy
+passlib[bcrypt]
+xlsxwriter
+jinja2
+uvicorn
+pyjwt
+psycopg2-binary
+python-multipart
+PyPDF2
+pdfplumber
+python-docx
