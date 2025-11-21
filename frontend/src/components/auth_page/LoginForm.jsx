@@ -39,9 +39,13 @@ function LoginForm() {
         localStorage.setItem('role', data.role)
         localStorage.setItem('userId', data.user_id)
         authLogin(data.access_token, data.role, data.user_id)
-        // Преподаватели попадают на канбан-страницу, остальные на профиль
+        // Редирект на dashboard в зависимости от роли
         if (data.role === 'teacher') {
           navigate('/dashboard')
+        } else if (data.role === 'student') {
+          navigate('/student-dashboard')
+        } else if (data.role === 'admin') {
+          navigate('/admin')
         } else {
           navigate('/profile')
         }

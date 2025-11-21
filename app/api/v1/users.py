@@ -1,4 +1,5 @@
 """Роуты для работы с пользователями"""
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from app.models import Course, Group, User
 from app.schemas import ChangeOwnPasswordRequest, CourseResponse, UpdateProfileRequest, UserResponse
 from app.utils import build_user_response, compose_full_name, normalize_name
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -79,13 +81,35 @@ def get_my_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Получение курсов текущего пользователя (преподавателя)"""
-    if current_user.role != "teacher":
-        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям")
+    """Получение курсов текущего пользователя"""
+    from app.models import Lecture
     
-    # Получаем все курсы, где текущий пользователь является преподавателем
-    # Используем обратную связь через relationship
-    courses = current_user.courses_taught
+    if current_user.role == "teacher":
+        # Получаем все курсы, где текущий пользователь является преподавателем
+        courses = current_user.courses_taught
+    elif current_user.role == "student":
+        # Получаем курсы группы студента, где есть опубликованные лекции
+        if not current_user.group_id:
+            return []
+        
+        # Получаем все курсы группы студента
+        courses = db.query(Course).join(Course.groups).filter(
+            Course.groups.any(id=current_user.group_id)
+        ).all()
+        
+        # Фильтруем только те курсы, где есть опубликованные лекции
+        courses_with_published = []
+        for course in courses:
+            published_lectures_count = db.query(Lecture).filter(
+                Lecture.course_id == course.id,
+                Lecture.published == True
+            ).count()
+            if published_lectures_count > 0:
+                courses_with_published.append(course)
+        courses = courses_with_published
+        logger.info(f"Студент {current_user.id} видит {len(courses)} курсов с опубликованными лекциями")
+    else:
+        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям и студентам")
     
     result = []
     for course in courses:
@@ -111,18 +135,37 @@ def get_my_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Получение курса преподавателя по ID"""
-    if current_user.role != "teacher":
-        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям")
+    """Получение курса по ID (для преподавателей и студентов)"""
+    from app.models import Lecture
     
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Курс не найден")
     
-    # Проверяем, что пользователь является преподавателем этого курса
-    teacher_ids = [t.id for t in course.teachers]
-    if current_user.id not in teacher_ids:
-        raise HTTPException(status_code=403, detail="Вы не являетесь преподавателем этого курса")
+    # Проверяем доступ в зависимости от роли
+    if current_user.role == "teacher":
+        # Преподаватель должен быть преподавателем этого курса
+        teacher_ids = [t.id for t in course.teachers]
+        if current_user.id not in teacher_ids:
+            raise HTTPException(status_code=403, detail="Вы не являетесь преподавателем этого курса")
+    elif current_user.role == "student":
+        # Студент должен быть в группе курса и курс должен иметь опубликованные лекции
+        if not current_user.group_id:
+            raise HTTPException(status_code=403, detail="У вас не указана группа")
+        
+        student_group_ids = [g.id for g in course.groups]
+        if current_user.group_id not in student_group_ids:
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+        
+        # Проверяем, что есть опубликованные лекции
+        published_lectures_count = db.query(Lecture).filter(
+            Lecture.course_id == course.id,
+            Lecture.published == True
+        ).count()
+        if published_lectures_count == 0:
+            raise HTTPException(status_code=403, detail="В этом курсе нет опубликованных лекций")
+    else:
+        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям и студентам")
     
     group_ids = [g.id for g in course.groups]
     group_names = [g.name for g in course.groups]

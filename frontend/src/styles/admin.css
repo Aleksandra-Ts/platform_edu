@@ -14,10 +14,70 @@
 .admin-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 2rem;
     flex-wrap: wrap;
     gap: 1rem;
+    position: relative;
+}
+
+.admin-header .auth-header {
+    flex: 1;
+}
+
+.admin-header .btn-outline {
+    align-self: flex-start;
+    margin-top: 0;
+    white-space: nowrap;
+    padding: 0.85rem 1.5rem;
+    min-width: 120px;
+    height: 44px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fffe 100%);
+    color: #0f6b51;
+    border: 2px solid #0f6b51;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 6px rgba(15, 107, 81, 0.15);
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.admin-header .btn-outline::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(15, 107, 81, 0.1);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.admin-header .btn-outline:hover {
+    background: linear-gradient(135deg, #0f6b51 0%, #115b49 100%);
+    color: white;
+    border-color: #0f6b51;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(15, 107, 81, 0.25);
+}
+
+.admin-header .btn-outline:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.admin-header .btn-outline:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(15, 107, 81, 0.2);
 }
 
 .tabs-container {
@@ -130,6 +190,7 @@
 }
 
 .items-list {
+    padding-top: 10px;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;

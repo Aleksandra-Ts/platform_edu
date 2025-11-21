@@ -89,17 +89,18 @@
   color: #2d3748;
 }
 
-.lecture-preview-description {
-  padding: 1rem 2rem;
-  color: #4a5568;
-  margin: 0;
-  border-bottom: 1px solid #e2e8f0;
-}
-
 .lecture-preview-content {
   padding: 2rem;
   overflow-y: auto;
   flex: 1;
+}
+
+.lecture-preview-description {
+  padding: 0;
+  color: #4a5568;
+  margin: 0 0 2rem 0;
+  line-height: 1.6;
+  font-size: 1rem;
 }
 
 /* Используем стили из lecture-view.css для материалов */
@@ -152,13 +153,113 @@
 .lecture-preview-content .video-player-wrapper {
   width: 100%;
   margin-top: 1rem;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .lecture-preview-content .video-player {
   width: 100%;
   max-height: 600px;
-  border-radius: 8px;
-  background: #000;
+  display: block;
+}
+
+.lecture-preview-content .video-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+.lecture-preview-content .btn-transcribe {
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, #0f6b51 0%, #115b49 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(15, 107, 81, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin: 0;
+}
+
+.lecture-preview-content .btn-transcribe:hover:not(:disabled) {
+  background: linear-gradient(135deg, #115b49 0%, #0b3d2c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 107, 81, 0.3);
+}
+
+.lecture-preview-content .btn-transcribe:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lecture-preview-content .transcript-container {
+  margin-top: 1.5rem;
+  background: #f8fffe;
+  border: 1px solid rgba(15, 107, 81, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.lecture-preview-content .transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(15, 107, 81, 0.1);
+}
+
+.lecture-preview-content .transcript-header h4 {
+  margin: 0;
+  color: #0b3d2c;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.lecture-preview-content .btn-close-transcript {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #718096;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lecture-preview-content .btn-close-transcript:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.lecture-preview-content .transcript-content {
+  color: #2d3748;
+  line-height: 1.6;
+}
+
+.lecture-preview-content .transcript-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 1rem;
+  color: #2d3748;
 }
 
 .lecture-preview-content .pdf-text-content {
@@ -196,6 +297,14 @@
   text-align: center;
   padding: 3rem;
   color: #718096;
+}
+
+.pdf-text-line {
+  margin: 0.5rem 0;
+}
+
+.pdf-page-separator {
+  margin: 1rem 0 0.5rem 0;
 }
 
 /* Адаптивность */

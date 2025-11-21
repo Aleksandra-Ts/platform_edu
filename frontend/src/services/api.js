@@ -172,9 +172,9 @@ class ApiClient {
   }
 
   async getCourse(courseId) {
-    // Для преподавателей используем /me/courses, для админов - /admin/courses
+    // Для преподавателей и студентов используем /me/courses, для админов - /admin/courses
     const role = localStorage.getItem('role')
-    if (role === 'teacher') {
+    if (role === 'teacher' || role === 'student') {
       return this.request(`/me/courses/${courseId}`)
     }
     return this.request(`/admin/courses/${courseId}`)
@@ -206,6 +206,12 @@ class ApiClient {
   async deleteLecture(lectureId) {
     return this.request(`/lectures/${lectureId}`, {
       method: 'DELETE'
+    })
+  }
+
+  async publishLecture(lectureId) {
+    return this.request(`/lectures/${lectureId}/publish`, {
+      method: 'POST'
     })
   }
 
@@ -254,6 +260,10 @@ class ApiClient {
 
   async getMaterialContent(materialId) {
     return this.request(`/materials/${materialId}/content`)
+  }
+
+  async transcribeVideo(materialId) {
+    return this.request(`/materials/${materialId}/transcribe`)
   }
 
   async createCourse(courseData) {

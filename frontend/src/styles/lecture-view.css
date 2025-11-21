@@ -137,6 +137,109 @@
   display: block;
 }
 
+.video-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0;
+  width: 100%;
+}
+
+.btn-transcribe {
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, #0f6b51 0%, #115b49 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(15, 107, 81, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin: 0;
+}
+
+.btn-transcribe:hover:not(:disabled) {
+  background: linear-gradient(135deg, #115b49 0%, #0b3d2c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 107, 81, 0.3);
+}
+
+.btn-transcribe:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.transcript-container {
+  margin-top: 1.5rem;
+  background: #f8fffe;
+  border: 1px solid rgba(15, 107, 81, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(15, 107, 81, 0.1);
+}
+
+.transcript-header h4 {
+  margin: 0;
+  color: #0b3d2c;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.btn-close-transcript {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #718096;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.btn-close-transcript:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.transcript-content {
+  color: #2d3748;
+  line-height: 1.6;
+}
+
+.transcript-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 1rem;
+  color: #2d3748;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
 /* PDF Viewer */
 .pdf-viewer-wrapper {
   width: 100%;
@@ -363,5 +466,20 @@
   padding: 3rem;
   color: rgba(11, 47, 36, 0.6);
   font-size: 1.1rem;
+}
+
+.video-direct-link {
+  color: #0f6b51;
+  text-decoration: underline;
+  margin-top: 1rem;
+  display: inline-block;
+}
+
+.pdf-text-line {
+  margin: 0.25rem 0;
+}
+
+.pdf-page-separator {
+  margin: 1rem 0 0.5rem 0;
 }
 

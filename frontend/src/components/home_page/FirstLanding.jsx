@@ -8,7 +8,17 @@ function FirstLanding() {
   const handleStartLearning = (e) => {
     e.preventDefault()
     if (isAuthenticated()) {
-      navigate('/profile')
+      // Редирект на dashboard в зависимости от роли
+      const role = localStorage.getItem('role')
+      if (role === 'teacher') {
+        navigate('/dashboard')
+      } else if (role === 'student') {
+        navigate('/student-dashboard')
+      } else if (role === 'admin') {
+        navigate('/admin')
+      } else {
+        navigate('/profile')
+      }
     } else {
       navigate('/login')
     }

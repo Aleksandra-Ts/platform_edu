@@ -162,7 +162,21 @@ class LectureResponse(BaseModel):
     name: str
     description: Optional[str]
     created_at: Optional[str]
+    published: bool = False
     materials: list[LectureMaterialResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
+class ProcessedMaterialResponse(BaseModel):
+    """Схема ответа с данными обработанного материала"""
+    id: int
+    material_id: int
+    file_url: str
+    file_type: str
+    processed_text: Optional[str]
+    processed_at: Optional[str]
 
     class Config:
         from_attributes = True

@@ -87,9 +87,19 @@ def ensure_lectures_schema():
                 course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE NOT NULL,
                 name VARCHAR NOT NULL,
                 description TEXT,
-                created_at VARCHAR
+                created_at VARCHAR,
+                published BOOLEAN DEFAULT FALSE
             )
         """))
+        # Добавляем столбец published, если его нет
+        try:
+            conn.execute(text("""
+                ALTER TABLE lectures 
+                ADD COLUMN IF NOT EXISTS published BOOLEAN DEFAULT FALSE
+            """))
+        except Exception as e:
+            logger.debug(f"Column published may already exist: {e}")
+        
         # Создаем таблицу lecture_materials, если её нет
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS lecture_materials (
@@ -111,6 +121,19 @@ def ensure_lectures_schema():
         except Exception as e:
             # Игнорируем ошибку, если столбец уже существует
             logger.debug(f"Column order_index may already exist: {e}")
+        
+        # Создаем таблицу processed_materials, если её нет
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS processed_materials (
+                id SERIAL PRIMARY KEY,
+                lecture_id INTEGER REFERENCES lectures(id) ON DELETE CASCADE NOT NULL,
+                material_id INTEGER REFERENCES lecture_materials(id) ON DELETE CASCADE NOT NULL,
+                file_url VARCHAR NOT NULL,
+                file_type VARCHAR NOT NULL,
+                processed_text TEXT,
+                processed_at VARCHAR
+            )
+        """))
         conn.commit()
 
 ensure_lectures_schema()

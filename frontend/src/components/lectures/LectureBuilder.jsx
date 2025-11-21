@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import LecturePreview from './LecturePreview'
 
-function LectureBuilder({ lecture, courseId, onClose, onUpdate }) {
+function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
   const navigate = useNavigate()
-  const [name, setName] = useState(lecture.name || '')
-  const [description, setDescription] = useState(lecture.description || '')
-  const [materials, setMaterials] = useState(lecture.materials || [])
+  const [name, setName] = useState(lecture?.name || '')
+  const [description, setDescription] = useState(lecture?.description || '')
+  const [materials, setMaterials] = useState(lecture?.materials || [])
+  const [published, setPublished] = useState(lecture?.published === true)
   const [uploading, setUploading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const isNew = !lecture.id
@@ -23,20 +24,26 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate }) {
 
   useEffect(() => {
     // Загружаем актуальные данные лекции при открытии конструктора (если это существующая лекция)
-    if (!isNew) {
+    if (!isNew && lecture?.id) {
       const loadLecture = async () => {
         try {
           const updatedLecture = await api.getLecture(lecture.id)
-          setName(updatedLecture.name)
+          setName(updatedLecture.name || '')
           setDescription(updatedLecture.description || '')
           setMaterials(updatedLecture.materials || [])
+          // Явно проверяем, что published === true (не undefined, не null)
+          setPublished(updatedLecture.published === true)
+          console.log('Загружена лекция:', { id: updatedLecture.id, published: updatedLecture.published })
         } catch (err) {
           console.error('Ошибка загрузки лекции:', err)
         }
       }
       loadLecture()
+    } else if (isNew) {
+      // Для новой лекции сбрасываем состояние
+      setPublished(false)
     }
-  }, [lecture.id, isNew])
+  }, [lecture?.id, isNew])
 
   const ensureLectureCreated = async () => {
     // Если лекция еще не создана, создаем её
@@ -257,6 +264,79 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate }) {
         </div>
       </div>
       
+      {/* Кнопки удаления и публикации лекции (только для существующих лекций) */}
+      {!isNew && lecture.id && (
+        <div className="lecture-builder-footer">
+          {published ? (
+            <div className="lecture-builder-published-badge">
+              Опубликовано
+            </div>
+          ) : (
+            <button 
+              className="btn-publish-lecture" 
+              onClick={async (e) => {
+                if (!confirm('Выложить лекцию для студентов? Будет выполнена транскрибация видео и парсинг PDF. Это может занять некоторое время.')) {
+                  return
+                }
+                const button = e.target
+                const originalText = button.textContent
+                button.disabled = true
+                button.textContent = '⏳ Обработка...'
+                
+                try {
+                  const response = await api.publishLecture(lecture.id)
+                  
+                  alert(response.message || 'Лекция успешно опубликована')
+                  setPublished(true)
+                  
+                  // Перезагружаем данные лекции, чтобы получить актуальное состояние
+                  try {
+                    const updatedLecture = await api.getLecture(lecture.id)
+                    setPublished(updatedLecture.published === true)
+                    console.log('После публикации - published:', updatedLecture.published)
+                  } catch (err) {
+                    console.error('Ошибка обновления данных лекции:', err)
+                  }
+                  
+                  // Обновляем данные лекции
+                  if (onUpdate) {
+                    onUpdate()
+                  }
+                } catch (err) {
+                  alert('Ошибка публикации лекции: ' + (err.message || 'Не удалось опубликовать лекцию'))
+                  button.disabled = false
+                  button.textContent = originalText
+                }
+              }}
+              title="Выложить лекцию"
+            >
+              📤 Выложить
+            </button>
+          )}
+          <button 
+            className="btn-delete-lecture" 
+            onClick={async () => {
+              if (!confirm('Вы уверены, что хотите удалить эту лекцию? Это действие нельзя отменить.')) {
+                return
+              }
+              try {
+                await api.deleteLecture(lecture.id)
+                if (onDelete) {
+                  onDelete()
+                } else {
+                  onClose()
+                }
+              } catch (err) {
+                alert('Ошибка удаления лекции: ' + (err.message || 'Не удалось удалить лекцию'))
+              }
+            }}
+            title="Удалить лекцию"
+          >
+            🗑️ Удалить лекцию
+          </button>
+        </div>
+      )}
+
       {/* Модальное окно для предпросмотра */}
       {showPreview && lecture.id && (
         <LecturePreview

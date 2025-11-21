@@ -77,12 +77,16 @@ class Lecture(Base):
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(String)  # Будем хранить как строку для простоты
+    published = Column(Boolean, default=False)  # Опубликована ли лекция для студентов
     
     # Связь с курсом
     course = relationship("Course", back_populates="lectures")
     
     # Материалы лекции (храним пути к файлам)
     materials = relationship("LectureMaterial", back_populates="lecture", cascade="all, delete-orphan")
+    
+    # Обработанные материалы (транскрипты, парсинг)
+    processed_materials = relationship("ProcessedMaterial", back_populates="lecture", cascade="all, delete-orphan")
 
 
 class LectureMaterial(Base):
@@ -99,4 +103,21 @@ class LectureMaterial(Base):
     
     # Связь с лекцией
     lecture = relationship("Lecture", back_populates="materials")
+
+
+class ProcessedMaterial(Base):
+    """Модель обработанного материала (транскрипты, парсинг)"""
+    __tablename__ = "processed_materials"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    lecture_id = Column(Integer, ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False)
+    material_id = Column(Integer, ForeignKey("lecture_materials.id", ondelete="CASCADE"), nullable=False)
+    file_url = Column(String, nullable=False)  # URL файла
+    file_type = Column(String, nullable=False)  # video, pdf, presentation, audio, scorm
+    processed_text = Column(Text, nullable=True)  # Транскрипт или распарсенный текст
+    processed_at = Column(String)  # Дата обработки
+    
+    # Связи
+    lecture = relationship("Lecture", back_populates="processed_materials")
+    material = relationship("LectureMaterial")
 

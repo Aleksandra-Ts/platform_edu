@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Profile from './pages/Profile'
 import Admin from './pages/Admin'
 import TeacherDashboard from './pages/TeacherDashboard'
+import StudentDashboard from './pages/StudentDashboard'
 import CourseDetail from './pages/CourseDetail'
 import LectureView from './pages/LectureView'
 import ChangePassword from './pages/ChangePassword'
@@ -40,11 +41,19 @@ function App() {
         } 
       />
       <Route 
+        path="/student-dashboard" 
+        element={
+          <StudentRoute>
+            <StudentDashboard />
+          </StudentRoute>
+        } 
+      />
+      <Route 
         path="/course/:courseId" 
         element={
-          <TeacherRoute>
+          <ProtectedRoute>
             <CourseDetail />
-          </TeacherRoute>
+          </ProtectedRoute>
         } 
       />
       <Route 
@@ -97,6 +106,24 @@ function TeacherRoute({ children }) {
   // Используем role из useAuth, если он есть, иначе из localStorage
   const currentRole = role || storedRole
   if (currentRole !== 'teacher') {
+    return <Navigate to="/profile" replace />
+  }
+  
+  return children
+}
+
+function StudentRoute({ children }) {
+  const { isAuthenticated, role } = useAuth()
+  
+  const token = localStorage.getItem('token')
+  const storedRole = localStorage.getItem('role')
+  
+  if (!token) {
+    return <Navigate to="/login" replace />
+  }
+  
+  const currentRole = role || storedRole
+  if (currentRole !== 'student') {
     return <Navigate to="/profile" replace />
   }
   

@@ -6,7 +6,16 @@ function ProfileHeader() {
   const { role } = useAuth()
   
   const handleHomeClick = () => {
-    navigate('/dashboard')
+    const currentRole = role || localStorage.getItem('role')
+    if (currentRole === 'teacher') {
+      navigate('/dashboard')
+    } else if (currentRole === 'student') {
+      navigate('/student-dashboard')
+    } else if (currentRole === 'admin') {
+      navigate('/admin')
+    } else {
+      navigate('/')
+    }
   }
 
   return (

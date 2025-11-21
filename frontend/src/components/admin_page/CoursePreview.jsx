@@ -1,141 +1,176 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import api from '../services/api'
-import { useAuth } from '../hooks/useAuth'
-import '../styles/lecture-view.css'
+import { useState, useEffect, useRef } from 'react'
+import api from '../../services/api'
+import '../../styles/course-preview.css'
+import '../../styles/lecture-preview.css'
 
-function LectureView() {
-  const { courseId, lectureId } = useParams()
-  const navigate = useNavigate()
-  const { role } = useAuth()
-  const [lecture, setLecture] = useState(null)
+function CoursePreview({ courseId, onClose }) {
   const [course, setCourse] = useState(null)
+  const [lectures, setLectures] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [expandedLectures, setExpandedLectures] = useState(new Set())
+  const modalRef = useRef(null)
 
   useEffect(() => {
-    loadLecture()
     loadCourse()
-  }, [lectureId, courseId])
+    
+    // Закрытие по ESC
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    
+    // Блокируем скролл body при открытом модальном окне
+    document.body.style.overflow = 'hidden'
+    
+    return () => {
+      document.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = 'unset'
+    }
+  }, [courseId, onClose])
 
-  const loadLecture = async () => {
+  const loadCourse = async () => {
     try {
       setLoading(true)
-      const data = await api.getLecture(lectureId)
-      setLecture(data)
+      const [courseData, lecturesData] = await Promise.all([
+        api.getCourse(courseId),
+        api.getLectures(courseId)
+      ])
+      setCourse(courseData)
+      setLectures(lecturesData || [])
     } catch (err) {
-      console.error('Ошибка загрузки лекции:', err)
-      setError('Лекция не найдена')
+      console.error('Ошибка загрузки курса:', err)
+      setError('Курс не найден')
     } finally {
       setLoading(false)
     }
   }
 
-  const loadCourse = async () => {
-    try {
-      const data = await api.getCourse(courseId)
-      setCourse(data)
-    } catch (err) {
-      console.error('Ошибка загрузки курса:', err)
+  const handleOverlayClick = (e) => {
+    if (e.target === modalRef.current) {
+      onClose()
     }
   }
 
-  const handleHomeClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else if (currentRole === 'admin') {
-      navigate('/admin')
+  const toggleLecture = (lectureId) => {
+    const newExpanded = new Set(expandedLectures)
+    if (newExpanded.has(lectureId)) {
+      newExpanded.delete(lectureId)
     } else {
-      navigate('/profile')
+      newExpanded.add(lectureId)
     }
-  }
-
-  const handleCoursesClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard?view=courses')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else {
-      navigate('/profile')
-    }
-  }
-
-  const handleCourseClick = () => {
-    navigate(`/course/${courseId}`)
+    setExpandedLectures(newExpanded)
   }
 
   if (loading) {
     return (
-      <div className="lecture-view-page">
-        <div className="lecture-view-container">
-          <div className="loading-state">Загрузка лекции...</div>
+      <div className="course-preview-overlay" ref={modalRef} onClick={handleOverlayClick}>
+        <div className="course-preview-modal">
+          <div className="loading-state">Загрузка курса...</div>
         </div>
       </div>
     )
   }
 
-  if (error || !lecture) {
+  if (error || !course) {
     return (
-      <div className="lecture-view-page">
-        <div className="lecture-view-container">
-          <div className="error-state">{error || 'Лекция не найдена'}</div>
+      <div className="course-preview-overlay" ref={modalRef} onClick={handleOverlayClick}>
+        <div className="course-preview-modal">
+          <div className="error-state">{error || 'Курс не найден'}</div>
+          <button className="btn-close-modal" onClick={onClose}>Закрыть</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="lecture-view-page">
-      <div className="lecture-view-container">
-        <div className="lecture-view-header">
-          <div className="breadcrumbs">
-            <span className="breadcrumb-item" onClick={handleHomeClick}>
-              Главная
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item" onClick={handleCoursesClick}>
-              Мои курсы
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item" onClick={handleCourseClick}>
-              {course?.name || 'Курс'}
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item active">{lecture.name}</span>
-          </div>
+    <div className="course-preview-overlay" ref={modalRef} onClick={handleOverlayClick}>
+      <div className="course-preview-modal">
+        <div className="course-preview-header">
+          <h2 className="course-preview-title">{course.name}</h2>
+          <button className="btn-close-modal" onClick={onClose} title="Закрыть">
+            ×
+          </button>
         </div>
 
-        <h1 className="lecture-view-title">{lecture.name}</h1>
-        {lecture.description && (
-          <p className="lecture-view-description">{lecture.description}</p>
-        )}
-
-        <div className="lecture-materials-view">
-          {lecture.materials && lecture.materials.length > 0 ? (
-            lecture.materials.map((material, index) => (
-              <MaterialViewer
-                key={material.id}
-                material={material}
-                index={index + 1}
-                lecture={lecture}
-              />
-            ))
-          ) : (
-            <div className="empty-materials">
-              <p>Материалы не добавлены</p>
+        <div className="course-preview-content">
+          {course.description && (
+            <div className="course-preview-description">
+              <h3>Описание курса</h3>
+              <p>{course.description}</p>
             </div>
           )}
+
+          <div className="course-preview-info">
+            {course.group_names && course.group_names.length > 0 && (
+              <div className="course-info-item">
+                <strong>Группы:</strong> {course.group_names.join(', ')}
+              </div>
+            )}
+            {course.teacher_names && course.teacher_names.length > 0 && (
+              <div className="course-info-item">
+                <strong>Преподаватели:</strong> {course.teacher_names.join(', ')}
+              </div>
+            )}
+          </div>
+
+          <div className="course-preview-lectures">
+            <h3>Лекции ({lectures.length})</h3>
+            {lectures.length === 0 ? (
+              <div className="empty-lectures">
+                <p>Лекции не добавлены</p>
+              </div>
+            ) : (
+              <div className="lectures-list">
+                {lectures.map((lecture) => (
+                  <div key={lecture.id} className="lecture-item">
+                    <div 
+                      className="lecture-item-header"
+                      onClick={() => toggleLecture(lecture.id)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <span className="lecture-name">{lecture.name}</span>
+                      {lecture.published && (
+                        <span className="lecture-published-badge-small">Опубликовано</span>
+                      )}
+                      <span className="lecture-expand-icon">
+                        {expandedLectures.has(lecture.id) ? '▼' : '▶'}
+                      </span>
+                    </div>
+                    {lecture.description && (
+                      <p className="lecture-description">{lecture.description}</p>
+                    )}
+                    {lecture.materials && lecture.materials.length > 0 && (
+                      <div className="lecture-materials-count">
+                        Материалов: {lecture.materials.length}
+                      </div>
+                    )}
+                    {expandedLectures.has(lecture.id) && lecture.materials && lecture.materials.length > 0 && (
+                      <div className="lecture-materials-preview">
+                        {lecture.materials.map((material, index) => (
+                          <MaterialViewer
+                            key={material.id}
+                            material={material}
+                            index={index + 1}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function MaterialViewer({ material, index, lecture }) {
+// Компонент для отображения материала (упрощенная версия из LecturePreview)
+function MaterialViewer({ material, index }) {
   const [fileText, setFileText] = useState(null)
   const [fileBlobUrl, setFileBlobUrl] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -145,17 +180,14 @@ function MaterialViewer({ material, index, lecture }) {
   const [showTranscript, setShowTranscript] = useState(false)
 
   useEffect(() => {
-    // Загружаем текстовое содержимое для PDF и Word через API
     if (material.file_type === 'pdf' || material.file_name?.endsWith('.docx') || material.file_name?.endsWith('.doc')) {
       loadFileText()
     }
     
-    // Загружаем файлы (видео, аудио) через blob URL для поддержки авторизации
     if (material.file_type === 'video' || material.file_type === 'audio') {
       loadFileAsBlob()
     }
     
-    // Cleanup blob URL при размонтировании
     return () => {
       if (fileBlobUrl) {
         URL.revokeObjectURL(fileBlobUrl)
@@ -214,19 +246,16 @@ function MaterialViewer({ material, index, lecture }) {
   }
 
   const getFileUrl = () => {
-    // Используем API эндпоинт для доступа к файлам с проверкой прав
     const API_BASE = import.meta.env.DEV ? '/api' : ''
     return `${API_BASE}/materials/${material.id}/file`
   }
 
   const handleTranscribe = async () => {
     if (transcript) {
-      // Если транскрипт уже есть, просто показываем/скрываем его
       setShowTranscript(!showTranscript)
       return
     }
 
-    // Проверку публикации делаем на бэкенде, здесь просто запрашиваем транскрипт
     try {
       setTranscribing(true)
       const result = await api.transcribeVideo(material.id)
@@ -264,14 +293,6 @@ function MaterialViewer({ material, index, lecture }) {
           return (
             <div className="error-file">
               <p>{error || 'Не удалось загрузить видео'}</p>
-              <a
-                href={fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="video-direct-link"
-              >
-                Попробовать открыть видео напрямую
-              </a>
             </div>
           )
         }
@@ -284,14 +305,6 @@ function MaterialViewer({ material, index, lecture }) {
                 className="video-player"
                 preload="metadata"
                 loading="lazy"
-                onError={(e) => {
-                  console.error('Video error:', {
-                    src: e.target.src,
-                    networkState: e.target.networkState,
-                    error: e.target.error,
-                    readyState: e.target.readyState
-                  })
-                }}
               >
                 <source src={fileBlobUrl} type={videoType} />
                 Ваш браузер не поддерживает воспроизведение видео.
@@ -434,7 +447,6 @@ function MaterialViewer({ material, index, lecture }) {
         )
 
       default:
-        // Проверяем, является ли файл Word документом
         if (material.file_name?.endsWith('.docx') || material.file_name?.endsWith('.doc')) {
           return (
             <div className="pdf-viewer-wrapper">
@@ -513,5 +525,5 @@ function MaterialViewer({ material, index, lecture }) {
   )
 }
 
-export default LectureView
+export default CoursePreview
 

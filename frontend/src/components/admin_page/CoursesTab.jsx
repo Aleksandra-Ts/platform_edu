@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import CreateCourseForm from './CreateCourseForm'
 import MultiSelect from './MultiSelect'
+import CoursePreview from './CoursePreview'
 
 function CoursesTab({
   form,
@@ -16,6 +17,7 @@ function CoursesTab({
 }) {
   const [editingCourse, setEditingCourse] = useState(null)
   const [editForm, setEditForm] = useState({ name: '', description: '', group_ids: [], teacher_ids: [] })
+  const [previewCourseId, setPreviewCourseId] = useState(null)
 
   const handleStartEdit = (course) => {
     setEditingCourse(course.id)
@@ -63,7 +65,12 @@ function CoursesTab({
               <div className="empty-state">Курсы не найдены</div>
             ) : (
               courses.map(course => (
-                <div key={course.id} className="item-card">
+                <div 
+                  key={course.id} 
+                  className="item-card"
+                  style={{ cursor: editingCourse !== course.id ? 'pointer' : 'default' }}
+                  onClick={editingCourse !== course.id ? () => setPreviewCourseId(course.id) : undefined}
+                >
                   <div className="item-info" style={{ flex: 1 }}>
                     {editingCourse === course.id ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -163,7 +170,10 @@ function CoursesTab({
                     <div className="item-actions">
                       <button
                         className="btn-outline"
-                        onClick={() => handleStartEdit(course)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleStartEdit(course)
+                        }}
                         title="Редактировать"
                         style={{ marginRight: '8px', padding: '6px 12px', fontSize: '0.9rem' }}
                       >
@@ -171,7 +181,10 @@ function CoursesTab({
                       </button>
                       <button
                         className="btn-delete"
-                        onClick={() => onDelete(course.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDelete(course.id)
+                        }}
                         title="Удалить"
                       >
                         🗑️
@@ -184,6 +197,12 @@ function CoursesTab({
           </div>
         </div>
       </div>
+      {previewCourseId && (
+        <CoursePreview
+          courseId={previewCourseId}
+          onClose={() => setPreviewCourseId(null)}
+        />
+      )}
     </div>
   )
 }

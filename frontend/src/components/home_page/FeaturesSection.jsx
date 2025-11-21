@@ -67,7 +67,7 @@ function FeaturesSection() {
                 Войти
               </Link>
             ) : (
-              <Link to="/profile" className="auth-btn profile-btn" id="auth-profile-btn" style={{ display: 'inline-flex' }}>
+              <Link to="/profile" className="auth-btn profile-btn" id="auth-profile-btn">
                 Профиль
               </Link>
             )}

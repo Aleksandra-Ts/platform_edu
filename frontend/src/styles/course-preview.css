@@ -1,0 +1,282 @@
+/* Модальное окно для просмотра курса */
+.course-preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.course-preview-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+  position: relative;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.course-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.course-preview-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #0b3d2c;
+  margin: 0;
+  background: linear-gradient(90deg, #0f6b51, #115b49);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #718096;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.btn-close-modal:hover {
+  background: #f7fafc;
+  color: #2d3748;
+}
+
+.course-preview-content {
+  padding: 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.course-preview-description {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.course-preview-description h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0b3d2c;
+  margin: 0 0 0.75rem 0;
+}
+
+.course-preview-description p {
+  color: #4a5568;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.course-preview-info {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.course-info-item {
+  margin-bottom: 0.75rem;
+  color: #4a5568;
+  font-size: 0.95rem;
+}
+
+.course-info-item:last-child {
+  margin-bottom: 0;
+}
+
+.course-info-item strong {
+  color: #0b3d2c;
+  margin-right: 0.5rem;
+}
+
+.course-preview-lectures {
+  margin-top: 1rem;
+}
+
+.course-preview-lectures h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0b3d2c;
+  margin: 0 0 1.25rem 0;
+}
+
+.empty-lectures {
+  text-align: center;
+  padding: 2rem;
+  color: #718096;
+}
+
+.empty-lectures p {
+  margin: 0;
+}
+
+.lectures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lecture-item {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: all 0.2s;
+}
+
+.lecture-item:hover {
+  box-shadow: 0 4px 12px rgba(15, 107, 81, 0.1);
+  border-color: rgba(15, 107, 81, 0.3);
+}
+
+.lecture-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  user-select: none;
+}
+
+.lecture-name {
+  font-weight: 600;
+  color: #0b3d2c;
+  font-size: 1.05rem;
+  flex: 1;
+}
+
+.lecture-published-badge-small {
+  font-size: 0.75rem;
+  color: #0b3d2c;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.lecture-published-badge-small::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f6b51;
+  display: inline-block;
+}
+
+.lecture-expand-icon {
+  color: #0f6b51;
+  font-size: 0.875rem;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.lecture-description {
+  color: #4a5568;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+  line-height: 1.5;
+}
+
+.lecture-materials-count {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #718096;
+}
+
+.lecture-materials-preview {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.lecture-materials-preview .material-item-view {
+  margin-bottom: 1.5rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.lecture-materials-preview .material-item-view:last-child {
+  margin-bottom: 0;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 3rem;
+  color: #4a5568;
+}
+
+.error-state {
+  color: #c0392b;
+}
+
+@media (max-width: 768px) {
+  .course-preview-overlay {
+    padding: 1rem;
+  }
+
+  .course-preview-modal {
+    max-height: 95vh;
+  }
+
+  .course-preview-header {
+    padding: 1rem 1.5rem;
+  }
+
+  .course-preview-content {
+    padding: 1.5rem;
+  }
+
+  .course-preview-title {
+    font-size: 1.5rem;
+  }
+}
+

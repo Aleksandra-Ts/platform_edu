@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api'
 import '../../styles/lecture-preview.css'
 
@@ -77,12 +77,11 @@ function LecturePreview({ courseId, lectureId, onClose }) {
             ×
           </button>
         </div>
-        
-        {lecture.description && (
-          <p className="lecture-preview-description">{lecture.description}</p>
-        )}
 
         <div className="lecture-preview-content">
+          {lecture.description && (
+            <p className="lecture-preview-description">{lecture.description}</p>
+          )}
           {lecture.materials && lecture.materials.length > 0 ? (
             lecture.materials.map((material, index) => (
               <MaterialViewer
@@ -108,6 +107,9 @@ function MaterialViewer({ material, index }) {
   const [fileBlobUrl, setFileBlobUrl] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [transcript, setTranscript] = useState(null)
+  const [transcribing, setTranscribing] = useState(false)
+  const [showTranscript, setShowTranscript] = useState(false)
 
   useEffect(() => {
     if (material.file_type === 'pdf' || material.file_name?.endsWith('.docx') || material.file_name?.endsWith('.doc')) {
@@ -133,12 +135,15 @@ function MaterialViewer({ material, index }) {
       const response = await api.getMaterialContent(material.id)
       if (response.content) {
         setFileText(response.content)
+        setError(null)
       } else if (response.error) {
         setError(response.error)
+        setFileText(null)
       }
     } catch (err) {
       console.error('Ошибка загрузки содержимого файла:', err)
-      setError('Не удалось загрузить содержимое файла.')
+      setError(err.message || 'Не удалось загрузить содержимое файла.')
+      setFileText(null)
     } finally {
       setLoading(false)
     }
@@ -177,6 +182,27 @@ function MaterialViewer({ material, index }) {
     return `${API_BASE}/materials/${material.id}/file`
   }
 
+  const handleTranscribe = async () => {
+    if (transcript) {
+      // Если транскрипт уже есть, просто показываем/скрываем его
+      setShowTranscript(!showTranscript)
+      return
+    }
+
+    // Проверку публикации делаем на бэкенде, здесь просто запрашиваем транскрипт
+    try {
+      setTranscribing(true)
+      const result = await api.transcribeVideo(material.id)
+      setTranscript(result)
+      setShowTranscript(true)
+    } catch (err) {
+      console.error('Ошибка транскрибации:', err)
+      alert('Ошибка транскрибации: ' + (err.message || 'Не удалось транскрибировать видео'))
+    } finally {
+      setTranscribing(false)
+    }
+  }
+
   const renderMaterial = () => {
     const fileUrl = getFileUrl()
 
@@ -206,17 +232,46 @@ function MaterialViewer({ material, index }) {
         }
         
         return (
-          <div className="video-player-wrapper">
-            <video
-              controls
-              className="video-player"
-              preload="metadata"
-              loading="lazy"
-            >
-              <source src={fileBlobUrl} type={videoType} />
-              Ваш браузер не поддерживает воспроизведение видео.
-            </video>
-          </div>
+          <>
+            <div className="video-player-wrapper">
+              <video
+                controls
+                className="video-player"
+                preload="metadata"
+                loading="lazy"
+              >
+                <source src={fileBlobUrl} type={videoType} />
+                Ваш браузер не поддерживает воспроизведение видео.
+              </video>
+            </div>
+            <div className="video-actions">
+              <button
+                className="btn-transcribe"
+                onClick={handleTranscribe}
+                disabled={transcribing}
+                title="Транскрибировать видео"
+              >
+                {transcribing ? '⏳ Транскрибация...' : '📝 Транскрибация'}
+              </button>
+            </div>
+            {showTranscript && transcript && (
+              <div className="transcript-container">
+                <div className="transcript-header">
+                  <h4>Транскрипт видео</h4>
+                  <button
+                    className="btn-close-transcript"
+                    onClick={() => setShowTranscript(false)}
+                    title="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="transcript-content">
+                  <p className="transcript-text">{transcript.text}</p>
+                </div>
+              </div>
+            )}
+          </>
         )
 
       case 'pdf':
@@ -251,7 +306,7 @@ function MaterialViewer({ material, index }) {
                 </div>
                 <div className="pdf-text-body">
                   {fileText.split('\n').map((line, i) => (
-                    <p key={i} style={{ margin: line.startsWith('---') ? '1rem 0 0.5rem 0' : '0.25rem 0' }}>
+                    <p key={i} className={line.startsWith('---') ? 'pdf-page-separator' : 'pdf-text-line'}>
                       {line}
                     </p>
                   ))}
@@ -304,7 +359,7 @@ function MaterialViewer({ material, index }) {
                   </div>
                   <div className="pdf-text-body">
                     {fileText.split('\n').map((line, i) => (
-                      <p key={i} style={{ margin: '0.5rem 0' }}>
+                      <p key={i} className="pdf-text-line">
                         {line}
                       </p>
                     ))}
