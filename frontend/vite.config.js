@@ -5,9 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    host: '0.0.0.0', // Для работы в Docker
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: process.env.VITE_API_TARGET || 'http://127.0.0.1:9000', // В Docker: http://backend:8000, локально: http://127.0.0.1:9000
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },

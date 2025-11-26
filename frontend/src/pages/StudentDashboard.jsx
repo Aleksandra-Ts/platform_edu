@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import GradesTab from '../components/grades/GradesTab'
 import '../styles/auth.css'
 import '../styles/teacher-dashboard.css'
+import '../styles/student-dashboard.css'
 
 // Пул смайликов для учебной платформы
 const EDUCATION_EMOJIS = [
@@ -31,7 +33,7 @@ function StudentDashboard() {
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState(null)
-  const [showKanban, setShowKanban] = useState(false)
+  const [activeView, setActiveView] = useState('home') // 'home', 'courses', 'grades'
   const { role } = useAuth()
   const navigate = useNavigate()
 
@@ -59,7 +61,7 @@ function StudentDashboard() {
       setLoading(true)
       const data = await api.getMyCourses()
       setCourses(data)
-      setShowKanban(true)
+      setActiveView('courses')
     } catch (err) {
       console.error('Ошибка загрузки курсов:', err)
     } finally {
@@ -71,18 +73,22 @@ function StudentDashboard() {
     if (courses.length === 0 && !loading) {
       loadCourses()
     } else {
-      setShowKanban(true)
+      setActiveView('courses')
     }
   }
 
+  const handleGradesClick = () => {
+    setActiveView('grades')
+  }
+
   const handleBackClick = () => {
-    setShowKanban(false)
+    setActiveView('home')
   }
 
   return (
     <div className="teacher-dashboard">
       <div className="dashboard-container">
-        {!showKanban ? (
+        {activeView === 'home' ? (
           <>
             {profile && (
               <h1 className="welcome-title">
@@ -100,6 +106,13 @@ function StudentDashboard() {
               </div>
               <div 
                 className="dashboard-card"
+                onClick={handleGradesClick}
+              >
+                <div className="dashboard-card-icon">📊</div>
+                <h2 className="dashboard-card-title">Мои оценки</h2>
+              </div>
+              <div 
+                className="dashboard-card"
                 onClick={() => navigate('/profile')}
               >
                 <div className="dashboard-card-icon">👤</div>
@@ -107,7 +120,7 @@ function StudentDashboard() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeView === 'courses' ? (
           <div className="kanban-view">
             <div className="breadcrumbs">
               <span className="breadcrumb-item" onClick={handleBackClick}>
@@ -145,7 +158,18 @@ function StudentDashboard() {
               </div>
             )}
           </div>
-        )}
+        ) : activeView === 'grades' ? (
+          <div className="grades-view">
+            <div className="breadcrumbs">
+              <span className="breadcrumb-item" onClick={handleBackClick}>
+                Главная
+              </span>
+              <span className="breadcrumb-separator">/</span>
+              <span className="breadcrumb-item active">Мои оценки</span>
+            </div>
+            <GradesTab profile={profile} />
+          </div>
+        ) : null}
       </div>
     </div>
   )

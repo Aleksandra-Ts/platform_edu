@@ -1,0 +1,69 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: edu_platform_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: edu_platform
+      TZ: Europe/Moscow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edu_platform_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: edu_platform_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/edu_platform
+      SECRET_KEY: ${SECRET_KEY:-secret}
+      GIGA_API_KEY: ${GIGA_API_KEY:-}
+    ports:
+      - "9000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./static:/app/static
+      - whisper_cache:/root/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - edu_platform_network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: edu_platform_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_TARGET=http://backend:8000
+      - TZ=Europe/Moscow
+    depends_on:
+      - backend
+    networks:
+      - edu_platform_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  whisper_cache:
+
+networks:
+  edu_platform_network:
+    driver: bridge

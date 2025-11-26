@@ -8,9 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, init_database
 from app.api.v1 import api_router
 from app.utils import create_default_admin
+
+# Импортируем модели, чтобы они зарегистрировались в Base.metadata
+import app.models  # Это нужно для регистрации моделей перед create_all()
 
 # Настройка логирования
 logging.basicConfig(
@@ -86,8 +89,57 @@ async def serve_react_app(full_path: str):
         logger.error(f"Error serving React app: {e}", exc_info=True)
         return JSONResponse({"detail": f"Internal server error: {str(e)}"}, status_code=500)
 
-# Создание администратора по умолчанию
-create_default_admin(SessionLocal())
+# Создание администратора по умолчанию (после инициализации БД)
+def init_app():
+    """Инициализация приложения: создание админа"""
+    import time
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            from app.core.database import init_database
+            # Убеждаемся, что база данных инициализирована
+            init_database()
+            # Небольшая задержка, чтобы убедиться, что таблицы созданы
+            time.sleep(1)
+            # Создаем администратора
+            create_default_admin(SessionLocal())
+            logger.info("Приложение инициализировано")
+            return
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Попытка {attempt + 1}/{max_retries} инициализации не удалась, повтор через {retry_delay}с: {e}")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"Ошибка инициализации приложения после {max_retries} попыток: {e}", exc_info=True)
+
+# Инициализируем приложение (отложенная инициализация через startup event)
+@app.on_event("startup")
+async def startup_event():
+    """Инициализация при старте приложения"""
+    init_app()
+    
+    # Предзагружаем модель Whisper в фоновом режиме
+    import asyncio
+    import threading
+    
+    def preload_whisper_model():
+        """Предзагрузка модели Whisper в отдельном потоке"""
+        try:
+            from app.utils.transcription import get_whisper_model, WHISPER_AVAILABLE
+            if WHISPER_AVAILABLE:
+                logger.info("Предзагрузка модели Whisper (base)...")
+                model = get_whisper_model(model_name="base", device="cpu", compute_type="int8")
+                logger.info("Модель Whisper успешно предзагружена и готова к использованию")
+            else:
+                logger.warning("Whisper недоступен, предзагрузка пропущена")
+        except Exception as e:
+            logger.warning(f"Не удалось предзагрузить модель Whisper: {e}. Модель будет загружена при первом использовании.")
+    
+    # Запускаем предзагрузку в отдельном потоке, чтобы не блокировать старт приложения
+    threading.Thread(target=preload_whisper_model, daemon=True).start()
+    logger.info("Запущена предзагрузка модели Whisper в фоновом режиме")
 
 
 if __name__ == "__main__":

@@ -6,9 +6,14 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi.responses import JSONResponse, StreamingResponse
+import json
+import asyncio
+import threading
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from app.core.database import engine
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +27,8 @@ from app.utils.transcription import (
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import Course, Lecture, LectureMaterial, ProcessedMaterial, User
-from app.schemas import CreateLectureRequest, LectureMaterialResponse, LectureResponse
+from app.models import Course, Lecture, LectureMaterial, ProcessedMaterial, User, Test, Question
+from app.schemas import CreateLectureRequest, UpdateLectureRequest, LectureMaterialResponse, LectureResponse, TestResponse, QuestionResponse
 
 router = APIRouter()
 
@@ -99,6 +104,11 @@ def get_course_lectures(
             description=lecture.description,
             created_at=lecture.created_at,
             published=lecture.published or False,
+            generate_test=lecture.generate_test or False,
+            test_generation_mode=lecture.test_generation_mode or "once",
+            test_max_attempts=lecture.test_max_attempts or 1,
+            test_show_answers=lecture.test_show_answers or False,
+            test_deadline=lecture.test_deadline,
             materials=[LectureMaterialResponse(
                 id=m.id,
                 file_path=m.file_path,
@@ -137,7 +147,12 @@ def create_lecture(
         course_id=payload.course_id,
         name=payload.name,
         description=payload.description,
-        created_at=datetime.now().isoformat()
+        created_at=datetime.now().isoformat(),
+        generate_test=payload.generate_test or False,
+        test_generation_mode=payload.test_generation_mode or "once",
+        test_max_attempts=payload.test_max_attempts or 1,
+        test_show_answers=payload.test_show_answers or False,
+        test_deadline=payload.test_deadline
     )
     
     db.add(lecture)
@@ -152,6 +167,11 @@ def create_lecture(
         description=lecture.description,
         created_at=lecture.created_at,
         published=lecture.published or False,
+        generate_test=lecture.generate_test or False,
+        test_generation_mode=lecture.test_generation_mode or "once",
+        test_max_attempts=lecture.test_max_attempts or 1,
+        test_show_answers=lecture.test_show_answers or False,
+        test_deadline=lecture.test_deadline,
         materials=[]
     )
 
@@ -200,6 +220,82 @@ def get_lecture(
         description=lecture.description,
         created_at=lecture.created_at,
         published=lecture.published or False,
+        generate_test=lecture.generate_test or False,
+        test_generation_mode=lecture.test_generation_mode or "once",
+        test_max_attempts=lecture.test_max_attempts or 1,
+        test_show_answers=lecture.test_show_answers or False,
+        test_deadline=lecture.test_deadline,
+        materials=[{
+            "id": m.id,
+            "file_path": m.file_path,
+            "file_type": m.file_type,
+            "file_name": m.file_name,
+            "file_size": m.file_size,
+            "order_index": m.order_index
+        } for m in materials]
+    )
+
+
+@router.put("/lectures/{lecture_id}")
+def update_lecture(
+    lecture_id: int,
+    payload: UpdateLectureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Обновление лекции"""
+    lecture = db.query(Lecture).filter(Lecture.id == lecture_id).first()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Лекция не найдена")
+    
+    course = db.query(Course).filter(Course.id == lecture.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    
+    # Проверяем права доступа
+    if current_user.role != "teacher":
+        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям")
+    
+    teacher_ids = [t.id for t in course.teachers]
+    if current_user.id not in teacher_ids:
+        raise HTTPException(status_code=403, detail="Вы не являетесь преподавателем этого курса")
+    
+    # Обновляем поля
+    if payload.name is not None:
+        lecture.name = payload.name
+    if payload.description is not None:
+        lecture.description = payload.description
+    if payload.generate_test is not None:
+        lecture.generate_test = payload.generate_test
+    if payload.test_generation_mode is not None:
+        lecture.test_generation_mode = payload.test_generation_mode
+    if payload.test_max_attempts is not None:
+        lecture.test_max_attempts = payload.test_max_attempts
+    if payload.test_show_answers is not None:
+        lecture.test_show_answers = payload.test_show_answers
+    if payload.test_deadline is not None:
+        lecture.test_deadline = payload.test_deadline
+    
+    db.commit()
+    db.refresh(lecture)
+    
+    try:
+        materials = db.query(LectureMaterial).filter(LectureMaterial.lecture_id == lecture.id).order_by(LectureMaterial.order_index).all()
+    except Exception:
+        materials = db.query(LectureMaterial).filter(LectureMaterial.lecture_id == lecture.id).all()
+    
+    return LectureResponse(
+        id=lecture.id,
+        course_id=lecture.course_id,
+        name=lecture.name,
+        description=lecture.description,
+        created_at=lecture.created_at,
+        published=lecture.published or False,
+        generate_test=lecture.generate_test or False,
+        test_generation_mode=lecture.test_generation_mode or "once",
+        test_max_attempts=lecture.test_max_attempts or 1,
+        test_show_answers=lecture.test_show_answers or False,
+        test_deadline=lecture.test_deadline,
         materials=[{
             "id": m.id,
             "file_path": m.file_path,
@@ -544,37 +640,52 @@ def transcribe_video(
         raise HTTPException(status_code=404, detail="Курс не найден")
     
     # Проверяем права доступа
+    is_teacher = False
     if current_user.role == "teacher":
         teacher_ids = [t.id for t in course.teachers]
         if current_user.id not in teacher_ids:
             raise HTTPException(status_code=403, detail="Доступ запрещен")
+        is_teacher = True
     elif current_user.role == "student":
         if not lecture.published:
             raise HTTPException(status_code=403, detail="Лекция не опубликована")
         student_group_ids = [g.id for g in course.groups]
         if current_user.group_id not in student_group_ids:
             raise HTTPException(status_code=403, detail="Доступ запрещен")
+    elif current_user.role == "admin":
+        # Админ имеет доступ
+        is_teacher = True  # Админ может транскрибировать как преподаватель
     else:
         raise HTTPException(status_code=403, detail="Доступ запрещен")
     
-    # Проверяем, опубликована ли лекция
-    if not lecture.published:
-        raise HTTPException(
-            status_code=403, 
-            detail="Транскрибация доступна только после публикации лекции. Нажмите кнопку 'Выложить' в конструкторе лекции."
-        )
-    
-    # Возвращаем сохраненный транскрипт из ProcessedMaterial
+    # Проверяем сохраненный транскрипт из ProcessedMaterial
     processed_material = db.query(ProcessedMaterial).filter(
         ProcessedMaterial.material_id == material_id
     ).first()
     
+    # Если транскрипт есть в БД - возвращаем его
     if processed_material and processed_material.processed_text:
         return JSONResponse({
             "text": processed_material.processed_text,
             "language": "ru"
         })
+    
+    # Если транскрипта нет в БД
+    if is_teacher:
+        # Для преподавателей: транскрибация доступна только после публикации
+        if not lecture.published:
+            raise HTTPException(
+                status_code=403, 
+                detail="Транскрибация доступна только после публикации лекции. Нажмите кнопку 'Выложить' в конструкторе лекции."
+            )
+        else:
+            # Лекция опубликована, но транскрипта нет - значит при публикации произошла ошибка
+            raise HTTPException(
+                status_code=404, 
+                detail="Транскрипт еще не готов. Перепубликуйте лекцию, нажав кнопку 'Выложить' в конструкторе."
+            )
     else:
+        # Для студентов: транскрипт должен быть в БД после публикации
         raise HTTPException(
             status_code=404, 
             detail="Транскрипт еще не готов. Обратитесь к преподавателю для публикации лекции."
@@ -649,12 +760,14 @@ def get_material_file(
 
 
 @router.post("/lectures/{lecture_id}/publish")
-def publish_lecture(
+async def publish_lecture(
     lecture_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Публикация лекции: транскрибация видео и парсинг PDF"""
+    """Публикация лекции: транскрибация видео и парсинг PDF с прогрессом через SSE"""
+    logger.info(f"Начало публикации лекции {lecture_id} пользователем {current_user.id}")
+    
     if current_user.role != "teacher":
         raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям")
     
@@ -676,6 +789,8 @@ def publish_lecture(
     
     if not materials:
         raise HTTPException(status_code=400, detail="Лекция не содержит материалов")
+    
+    logger.info(f"Найдено материалов для обработки: {len(materials)}")
     
     processed_count = 0
     errors = []
@@ -723,23 +838,38 @@ def publish_lecture(
             
             if file_ext in video_exts or file_ext in audio_exts:
                 # Транскрибация видео или аудио
+                logger.info(f"Обработка видео/аудио файла: {material.file_name}")
                 if not WHISPER_AVAILABLE:
+                    logger.warning(f"Whisper не установлен, пропущено: {material.file_name}")
                     errors.append(f"Whisper не установлен, пропущено: {material.file_name}")
                     continue
                 
                 try:
                     # Находим FFmpeg
+                    logger.info(f"Поиск FFmpeg для файла: {material.file_name}")
                     ffmpeg_path = find_ffmpeg()
                     if not ffmpeg_path:
+                        logger.error(f"FFmpeg не найден для файла: {material.file_name}")
                         errors.append(f"FFmpeg не найден, пропущено: {material.file_name}")
                         continue
+                    
+                    logger.info(f"FFmpeg найден: {ffmpeg_path}")
                     
                     # Убеждаемся, что FFmpeg в PATH
                     ensure_ffmpeg_in_path(ffmpeg_path)
                     
-                    # Транскрибируем используя модуль транскрибации
-                    processed_text = transcribe_file(file_path, model_name="base")
-                    logger.info(f"Транскрибировано: {material.file_name}")
+                    # Транскрибируем используя модуль транскрибации в отдельном потоке
+                    # чтобы не блокировать event loop
+                    logger.info(f"Начало транскрибации файла: {material.file_name} (путь: {file_path})")
+                    # Выполняем транскрибацию в отдельном потоке
+                    loop = asyncio.get_event_loop()
+                    processed_text = await loop.run_in_executor(
+                        None,  # Используем ThreadPoolExecutor по умолчанию
+                        transcribe_file,
+                        file_path,
+                        "base"
+                    )
+                    logger.info(f"Транскрибация завершена: {material.file_name}, длина текста: {len(processed_text) if processed_text else 0} символов")
                     
                 except Exception as e:
                     logger.error(f"Ошибка транскрибации {material.file_name}: {e}", exc_info=True)
@@ -747,16 +877,20 @@ def publish_lecture(
                     continue
             
             elif material.file_type == 'pdf':
-                # Парсинг PDF
+                # Парсинг PDF в отдельном потоке
                 try:
                     import pdfplumber
-                    text_parts = []
-                    with pdfplumber.open(str(file_path)) as pdf:
-                        for page in pdf.pages:
-                            text = page.extract_text()
-                            if text:
-                                text_parts.append(text)
-                    processed_text = "\n\n".join(text_parts)
+                    def parse_pdf():
+                        text_parts = []
+                        with pdfplumber.open(str(file_path)) as pdf:
+                            for page in pdf.pages:
+                                text = page.extract_text()
+                                if text:
+                                    text_parts.append(text)
+                        return "\n\n".join(text_parts)
+                    
+                    loop = asyncio.get_event_loop()
+                    processed_text = await loop.run_in_executor(None, parse_pdf)
                     logger.info(f"Распарсен PDF: {material.file_name}")
                     
                 except Exception as e:
@@ -765,15 +899,19 @@ def publish_lecture(
                     continue
             
             elif material.file_name.endswith('.docx') or material.file_name.endswith('.doc'):
-                # Парсинг DOCX
+                # Парсинг DOCX в отдельном потоке
                 try:
                     from docx import Document
-                    doc = Document(str(file_path))
-                    text_parts = []
-                    for paragraph in doc.paragraphs:
-                        if paragraph.text.strip():
-                            text_parts.append(paragraph.text)
-                    processed_text = "\n\n".join(text_parts)
+                    def parse_docx():
+                        doc = Document(str(file_path))
+                        text_parts = []
+                        for paragraph in doc.paragraphs:
+                            if paragraph.text.strip():
+                                text_parts.append(paragraph.text)
+                        return "\n\n".join(text_parts)
+                    
+                    loop = asyncio.get_event_loop()
+                    processed_text = await loop.run_in_executor(None, parse_docx)
                     logger.info(f"Распарсен DOCX: {material.file_name}")
                     
                 except Exception as e:
@@ -781,13 +919,41 @@ def publish_lecture(
                     errors.append(f"Ошибка парсинга DOCX {material.file_name}: {str(e)}")
                     continue
             
+            # Генерируем эмбеддинг для текста, если он есть
+            embedding = None
+            if processed_text and processed_text.strip():
+                try:
+                    from app.utils.embeddings import generate_embedding
+                    text_for_embedding = processed_text.strip()
+                    
+                    # Генерируем эмбеддинг в отдельном потоке, чтобы не блокировать event loop
+                    loop = asyncio.get_event_loop()
+                    embedding = await loop.run_in_executor(
+                        None,
+                        lambda: generate_embedding(
+                            text_for_embedding,
+                            use_chunks=True,
+                            chunk_size=2000,  # Размер чанка в символах
+                            overlap=200       # Перекрытие между чанками
+                        )
+                    )
+                    
+                    if embedding:
+                        logger.info(f"Сгенерирован эмбеддинг для материала: {material.file_name} (размерность: {len(embedding)}, длина текста: {len(text_for_embedding)} символов)")
+                    else:
+                        logger.warning(f"Эмбеддинг не был сгенерирован для {material.file_name} (вернулся None)")
+                except Exception as e:
+                    logger.error(f"Ошибка генерации эмбеддинга для {material.file_name}: {e}", exc_info=True)
+            
             # Сохраняем обработанный материал
             processed_material = ProcessedMaterial(
                 lecture_id=lecture_id,
                 material_id=material.id,
+                user_id=current_user.id,  # Кто загрузил материал
                 file_url=file_url,
                 file_type=material.file_type,
                 processed_text=processed_text,
+                embedding=embedding,  # Векторное представление
                 processed_at=datetime.now().isoformat()
             )
             db.add(processed_material)
@@ -800,25 +966,115 @@ def publish_lecture(
             errors.append(f"Ошибка обработки {material.file_name}: {str(e)}")
             continue
     
-    # Устанавливаем лекцию как опубликованную (даже если были ошибки, но хотя бы один материал обработан)
-    if processed_count > 0:
+    # Публикуем лекцию ТОЛЬКО если ВСЕ материалы успешно обработаны
+    if processed_count == len(materials) and len(errors) == 0:
         lecture.published = True
-        logger.info(f"Лекция {lecture_id} помечена как опубликованная. Обработано: {processed_count}/{len(materials)}")
+        db.commit()
+        logger.info(f"Лекция {lecture_id} успешно опубликована. Обработано: {processed_count}/{len(materials)}")
+        
+        # Генерируем тест на основе обработанных материалов (2-3 вопроса на файл)
+        # Только если generate_test=True и test_generation_mode="once"
+        # Генерация теста также выполняется в отдельном потоке
+        if lecture.generate_test and lecture.test_generation_mode == "once":
+            try:
+                from app.utils.rag import generate_questions_from_text
+                
+                logger.info(f"Начинаем генерацию теста для лекции {lecture_id} (режим: один раз)")
+                
+                # Получаем обработанные материалы
+                processed_materials = db.query(ProcessedMaterial).filter(
+                    ProcessedMaterial.lecture_id == lecture_id,
+                    ProcessedMaterial.processed_text.isnot(None)
+                ).all()
+                
+                logger.info(f"Найдено обработанных материалов: {len(processed_materials)}")
+                
+                all_questions = []
+                order_index = 0
+                
+                # Генерируем вопросы для каждого файла отдельно
+                for pm in processed_materials:
+                    if not pm.processed_text or not pm.processed_text.strip():
+                        continue
+                    
+                    text = pm.processed_text.strip()
+                    text_length = len(text)
+                    
+                    # Определяем количество вопросов в зависимости от длины текста
+                    # Короткий текст (< 500 символов) - 2 вопроса
+                    # Средний (500-1500) - 2-3 вопроса
+                    # Длинный (> 1500) - 3 вопроса
+                    if text_length < 500:
+                        num_questions = 2
+                    elif text_length < 1500:
+                        num_questions = 2 if text_length < 1000 else 3
+                    else:
+                        num_questions = 3
+                    
+                    logger.info(f"Генерируем {num_questions} вопросов для материала {pm.material_id} (длина: {text_length} символов)")
+                    
+                    # Генерируем вопросы для этого файла
+                    questions_data = generate_questions_from_text(text, num_questions=num_questions)
+                    
+                    if questions_data and len(questions_data) > 0:
+                        # Устанавливаем правильный order_index для каждого вопроса
+                        for q_data in questions_data:
+                            q_data["order_index"] = order_index
+                            order_index += 1
+                        all_questions.extend(questions_data)
+                        logger.info(f"Добавлено {len(questions_data)} вопросов из материала {pm.material_id}")
+                    else:
+                        logger.warning(f"Не удалось сгенерировать вопросы для материала {pm.material_id}")
+                
+                if all_questions and len(all_questions) > 0:
+                    logger.info(f"Всего сгенерировано {len(all_questions)} вопросов, создаем тест...")
+                    # Создаем тест
+                    test = Test(
+                        lecture_id=lecture_id,
+                        created_at=datetime.now().isoformat()
+                    )
+                    db.add(test)
+                    db.flush()
+                    
+                    # Создаем вопросы
+                    for q_data in all_questions:
+                        question = Question(
+                            test_id=test.id,
+                            question_text=q_data["question_text"],
+                            correct_answer=q_data["correct_answer"],
+                            options=q_data.get("options"),  # Добавляем варианты ответов
+                            question_type=q_data["question_type"],
+                            order_index=q_data["order_index"]
+                        )
+                        db.add(question)
+                    
+                    db.commit()
+                    logger.info(f"✅ Создан тест из {len(all_questions)} вопросов для лекции {lecture_id}")
+                else:
+                    logger.warning(f"⚠️ Не удалось сгенерировать вопросы для лекции {lecture_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка генерации теста для лекции {lecture_id}: {e}", exc_info=True)
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                # Не прерываем публикацию, если тест не создался
+        else:
+            if lecture.generate_test:
+                logger.info(f"Тест для лекции {lecture_id} будет генерироваться для каждого студента отдельно")
+        
+        return JSONResponse({
+            "message": f"Лекция опубликована. Обработано материалов: {processed_count}/{len(materials)}",
+            "processed_count": processed_count,
+            "total_count": len(materials),
+            "errors": None,
+            "published": True
+        })
     else:
-        logger.warning(f"Не удалось обработать ни одного материала для лекции {lecture_id}")
+        # Откатываем изменения, если не все материалы обработаны
+        db.rollback()
+        logger.warning(f"Не удалось обработать все материалы для лекции {lecture_id}. Обработано: {processed_count}/{len(materials)}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Не удалось обработать материалы. Ошибки: {', '.join(errors) if errors else 'Неизвестная ошибка'}"
+            detail=f"Не удалось обработать все материалы. Обработано: {processed_count}/{len(materials)}. Ошибки: {', '.join(errors) if errors else 'Неизвестная ошибка'}"
         )
     
-    db.commit()
-    logger.info(f"Лекция {lecture_id} успешно опубликована")
-    
-    return JSONResponse({
-        "message": f"Лекция опубликована. Обработано материалов: {processed_count}/{len(materials)}",
-        "processed_count": processed_count,
-        "total_count": len(materials),
-        "errors": errors if errors else None,
-        "published": True
-    })
 

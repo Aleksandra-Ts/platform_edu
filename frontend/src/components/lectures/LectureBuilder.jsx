@@ -9,9 +9,17 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
   const [description, setDescription] = useState(lecture?.description || '')
   const [materials, setMaterials] = useState(lecture?.materials || [])
   const [published, setPublished] = useState(lecture?.published === true)
+  const [generateTest, setGenerateTest] = useState(lecture?.generate_test || false)
+  const [testGenerationMode, setTestGenerationMode] = useState(lecture?.test_generation_mode || 'once')
+  const [testMaxAttempts, setTestMaxAttempts] = useState(lecture?.test_max_attempts || 1)
+  const [testShowAnswers, setTestShowAnswers] = useState(lecture?.test_show_answers || false)
+  const [testDeadline, setTestDeadline] = useState(lecture?.test_deadline || '')
   const [uploading, setUploading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const isNew = !lecture.id
+  const [lectureId, setLectureId] = useState(lecture?.id)
+  const [publishing, setPublishing] = useState(false)
+  const [publishProgress, setPublishProgress] = useState(0)
+  const isNew = !lectureId
 
   const handlePreview = () => {
     if (!lecture.id) {
@@ -23,31 +31,42 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
   }
 
   useEffect(() => {
+    // Обновляем lectureId при изменении lecture
+    if (lecture?.id) {
+      setLectureId(lecture.id)
+    }
+    
     // Загружаем актуальные данные лекции при открытии конструктора (если это существующая лекция)
-    if (!isNew && lecture?.id) {
+    if (lecture?.id) {
       const loadLecture = async () => {
         try {
           const updatedLecture = await api.getLecture(lecture.id)
           setName(updatedLecture.name || '')
           setDescription(updatedLecture.description || '')
           setMaterials(updatedLecture.materials || [])
-          // Явно проверяем, что published === true (не undefined, не null)
           setPublished(updatedLecture.published === true)
+          setGenerateTest(updatedLecture.generate_test || false)
+          setTestGenerationMode(updatedLecture.test_generation_mode || 'once')
+          setTestMaxAttempts(updatedLecture.test_max_attempts || 1)
+          setTestShowAnswers(updatedLecture.test_show_answers || false)
+          setTestDeadline(updatedLecture.test_deadline || '')
+          setLectureId(updatedLecture.id)
           console.log('Загружена лекция:', { id: updatedLecture.id, published: updatedLecture.published })
         } catch (err) {
           console.error('Ошибка загрузки лекции:', err)
         }
       }
       loadLecture()
-    } else if (isNew) {
+    } else {
       // Для новой лекции сбрасываем состояние
       setPublished(false)
+      setLectureId(null)
     }
-  }, [lecture?.id, isNew])
+  }, [lecture?.id])
 
   const ensureLectureCreated = async () => {
     // Если лекция еще не создана, создаем её
-    if (isNew && !lecture.id) {
+    if (isNew && !lectureId) {
       if (!name.trim()) {
         throw new Error('Название лекции обязательно')
       }
@@ -55,9 +74,17 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
         const newLecture = await api.createLecture({
           course_id: parseInt(courseId),
           name: name.trim(),
-          description: description.trim() || null
+          description: description.trim() || null,
+          generate_test: generateTest,
+          test_generation_mode: testGenerationMode,
+          test_max_attempts: testMaxAttempts,
+          test_show_answers: testShowAnswers,
+          test_deadline: testDeadline || null
         })
-        lecture.id = newLecture.id
+        setLectureId(newLecture.id)
+        if (lecture) {
+          lecture.id = newLecture.id
+        }
         // Обновляем состояние, чтобы поля стали disabled
         onUpdate() // Обновляем список лекций
         return newLecture.id
@@ -66,7 +93,7 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
         throw err
       }
     }
-    return lecture.id
+    return lectureId || lecture?.id
   }
 
   const handleFileUpload = async (e) => {
@@ -195,6 +222,7 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
             disabled={!isNew || !!lecture.id}
           />
         </div>
+        
         {isNew && !lecture.id && (
           <p className="hint-text">
             💡 Введите название и описание, затем загрузите материалы. Лекция будет создана автоматически при первой загрузке файла.
@@ -264,9 +292,332 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
         </div>
       </div>
       
+      {/* Настройки генерации теста (только для существующих лекций) */}
+      {!isNew && lecture.id && (
+        <div className="test-settings-section">
+          <div className="test-settings-header">
+            <h4>Настройки теста</h4>
+            <p className="test-settings-description">
+              Настройте автоматическую генерацию теста на основе материалов лекции
+              {published && (
+                <span className="test-settings-editable-hint">
+                  {' '}✓ Параметры теста можно изменять после публикации
+                </span>
+              )}
+            </p>
+          </div>
+          
+          <div className="test-settings-content">
+            <div className="test-settings-main">
+              <label className="test-settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={generateTest}
+                  onChange={(e) => {
+                    setGenerateTest(e.target.checked)
+                    // Автосохранение при изменении
+                    if (lecture.id) {
+                      api.updateLecture(lecture.id, {
+                        generate_test: e.target.checked,
+                        test_generation_mode: testGenerationMode,
+                        test_max_attempts: testMaxAttempts,
+                        test_show_answers: testShowAnswers,
+                        test_deadline: testDeadline || null
+                      }).catch(err => console.error('Ошибка сохранения:', err))
+                    }
+                  }}
+                  className="test-settings-checkbox-large"
+                />
+                <span className="test-settings-toggle-label">
+                  <span className="test-settings-toggle-text">
+                    <strong>Генерировать тест по лекции</strong>
+                    <span className="test-settings-toggle-hint">Автоматически создавать тест на основе материалов</span>
+                  </span>
+                </span>
+              </label>
+            </div>
+            
+            {generateTest && (
+              <div className="test-settings-options">
+                <div className="test-settings-option">
+                  <label className="test-settings-option-label">
+                    Режим генерации теста
+                    {published && testGenerationMode === 'once' && (
+                      <span className="test-settings-warning-badge" title="Внимание: изменение режима после публикации может повлиять на уже созданные тесты">
+                        ⚠️
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    value={testGenerationMode}
+                    onChange={(e) => {
+                      if (published && testGenerationMode === 'once' && e.target.value === 'per_student') {
+                        if (!confirm('Внимание! Изменение режима генерации теста после публикации может повлиять на уже созданные тесты. Продолжить?')) {
+                          return
+                        }
+                      }
+                      setTestGenerationMode(e.target.value)
+                      if (lecture.id) {
+                        api.updateLecture(lecture.id, {
+                          generate_test: generateTest,
+                          test_generation_mode: e.target.value,
+                          test_max_attempts: testMaxAttempts,
+                          test_show_answers: testShowAnswers,
+                          test_deadline: testDeadline || null
+                        }).catch(err => console.error('Ошибка сохранения:', err))
+                      }
+                    }}
+                    className="test-settings-select"
+                  >
+                    <option value="once">Один раз (при публикации)</option>
+                    <option value="per_student">Новый тест для каждого студента</option>
+                  </select>
+                  <span className="test-settings-option-hint">
+                    {testGenerationMode === 'once' 
+                      ? 'Все студенты получат одинаковый тест' 
+                      : 'Каждый студент получит уникальный тест'}
+                    {published && (
+                      <span className="test-settings-editable-indicator"> (можно изменить)</span>
+                    )}
+                  </span>
+                </div>
+                
+                <div className="test-settings-option">
+                  <label className="test-settings-option-label">
+                    Максимальное количество попыток
+                    {published && (
+                      <span className="test-settings-editable-badge" title="Можно изменить после публикации">
+                        ✏️
+                      </span>
+                    )}
+                  </label>
+                  <div className="test-settings-input-group">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={testMaxAttempts}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1
+                        setTestMaxAttempts(value)
+                        if (lecture.id) {
+                          api.updateLecture(lecture.id, {
+                            generate_test: generateTest,
+                            test_generation_mode: testGenerationMode,
+                            test_max_attempts: value,
+                            test_show_answers: testShowAnswers,
+                            test_deadline: testDeadline || null
+                          }).catch(err => {
+                            console.error('Ошибка сохранения:', err)
+                            alert('Ошибка сохранения параметров теста: ' + err.message)
+                          })
+                        }
+                      }}
+                      className="test-settings-input-number"
+                    />
+                    <span className="test-settings-input-suffix">попыток</span>
+                  </div>
+                  <span className="test-settings-option-hint">
+                    Сколько раз студент может пройти тест
+                    {published && (
+                      <span className="test-settings-editable-indicator"> (можно изменить)</span>
+                    )}
+                  </span>
+                </div>
+                
+                <div className="test-settings-option">
+                  <label className="test-settings-option-label">
+                    <input
+                      type="checkbox"
+                      checked={testShowAnswers}
+                      onChange={(e) => {
+                        setTestShowAnswers(e.target.checked)
+                        if (lecture.id) {
+                          api.updateLecture(lecture.id, {
+                            generate_test: generateTest,
+                            test_generation_mode: testGenerationMode,
+                            test_max_attempts: testMaxAttempts,
+                            test_show_answers: e.target.checked,
+                            test_deadline: testDeadline || null
+                          }).catch(err => console.error('Ошибка сохранения:', err))
+                        }
+                      }}
+                      className="test-settings-checkbox"
+                    />
+                    <span>Показывать правильные ответы после дедлайна</span>
+                  </label>
+                  <span className="test-settings-option-hint">
+                    Правильные ответы будут доступны только после окончания дедлайна
+                  </span>
+                </div>
+                
+                <div className="test-settings-option">
+                  <label className="test-settings-option-label">
+                    Дедлайн выполнения теста
+                    {published && (
+                      <span className="test-settings-editable-badge" title="Можно изменить после публикации">
+                        ✏️
+                      </span>
+                    )}
+                  </label>
+                  <div className="test-settings-deadline-widget">
+                    <div className="test-settings-deadline-inputs">
+                      <div className="test-settings-date-input-wrapper">
+                        <label className="test-settings-date-label">
+                          <span className="test-settings-date-icon">📅</span>
+                          <span>Дата</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={testDeadline ? (testDeadline.includes('T') ? testDeadline.split('T')[0] : new Date(testDeadline).toISOString().slice(0, 10)) : ''}
+                          onChange={(e) => {
+                            const dateValue = e.target.value
+                            if (dateValue) {
+                              const timeValue = testDeadline ? new Date(testDeadline).toTimeString().slice(0, 5) : '23:59'
+                              // Сохраняем в формате YYYY-MM-DDTHH:mm (локальное время, без UTC)
+                              const newDateTime = `${dateValue}T${timeValue}`
+                              setTestDeadline(newDateTime)
+                              if (lecture.id) {
+                                api.updateLecture(lecture.id, {
+                                  generate_test: generateTest,
+                                  test_generation_mode: testGenerationMode,
+                                  test_max_attempts: testMaxAttempts,
+                                  test_show_answers: testShowAnswers,
+                                  test_deadline: newDateTime
+                                }).catch(err => console.error('Ошибка сохранения:', err))
+                              }
+                            } else {
+                              setTestDeadline('')
+                              if (lecture.id) {
+                                api.updateLecture(lecture.id, {
+                                  generate_test: generateTest,
+                                  test_generation_mode: testGenerationMode,
+                                  test_max_attempts: testMaxAttempts,
+                                  test_show_answers: testShowAnswers,
+                                  test_deadline: null
+                                }).catch(err => console.error('Ошибка сохранения:', err))
+                              }
+                            }
+                          }}
+                          className="test-settings-date-input"
+                          min={new Date().toISOString().slice(0, 10)}
+                        />
+                      </div>
+                      
+                      <div className="test-settings-time-input-wrapper">
+                        <label className="test-settings-time-label">
+                          <span className="test-settings-time-icon">🕐</span>
+                          <span>Время</span>
+                        </label>
+                        <input
+                          type="time"
+                          value={testDeadline ? (testDeadline.includes('T') ? testDeadline.split('T')[1]?.slice(0, 5) || '' : new Date(testDeadline).toTimeString().slice(0, 5)) : ''}
+                          onChange={(e) => {
+                            const timeValue = e.target.value
+                            if (timeValue && testDeadline) {
+                              // Извлекаем дату из существующего дедлайна (может быть в формате ISO или YYYY-MM-DDTHH:mm)
+                              const dateValue = testDeadline.includes('T') 
+                                ? testDeadline.split('T')[0] 
+                                : new Date(testDeadline).toISOString().slice(0, 10)
+                              // Сохраняем в формате YYYY-MM-DDTHH:mm (локальное время, без UTC)
+                              const newDateTime = `${dateValue}T${timeValue}`
+                              setTestDeadline(newDateTime)
+                              if (lecture.id) {
+                                api.updateLecture(lecture.id, {
+                                  generate_test: generateTest,
+                                  test_generation_mode: testGenerationMode,
+                                  test_max_attempts: testMaxAttempts,
+                                  test_show_answers: testShowAnswers,
+                                  test_deadline: newDateTime
+                                }).catch(err => console.error('Ошибка сохранения:', err))
+                              }
+                            } else if (timeValue) {
+                              // Если есть время, но нет даты, устанавливаем сегодняшнюю дату
+                              const today = new Date().toISOString().slice(0, 10)
+                              // Сохраняем в формате YYYY-MM-DDTHH:mm (локальное время, без UTC)
+                              const newDateTime = `${today}T${timeValue}`
+                              setTestDeadline(newDateTime)
+                              if (lecture.id) {
+                                api.updateLecture(lecture.id, {
+                                  generate_test: generateTest,
+                                  test_generation_mode: testGenerationMode,
+                                  test_max_attempts: testMaxAttempts,
+                                  test_show_answers: testShowAnswers,
+                                  test_deadline: newDateTime
+                                }).catch(err => console.error('Ошибка сохранения:', err))
+                              }
+                            }
+                          }}
+                          className="test-settings-time-input"
+                          disabled={!testDeadline}
+                        />
+                      </div>
+                      
+                      {testDeadline && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTestDeadline('')
+                            if (lecture.id) {
+                              api.updateLecture(lecture.id, {
+                                generate_test: generateTest,
+                                test_generation_mode: testGenerationMode,
+                                test_max_attempts: testMaxAttempts,
+                                test_show_answers: testShowAnswers,
+                                test_deadline: null
+                              }).catch(err => console.error('Ошибка сохранения:', err))
+                            }
+                          }}
+                          className="test-settings-remove-deadline"
+                          title="Убрать дедлайн"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {testDeadline && (
+                      <div className="test-settings-deadline-preview">
+                        <span className="test-settings-deadline-preview-icon">⏰</span>
+                        <span className="test-settings-deadline-preview-text">
+                          Дедлайн: {(() => {
+                            // Парсим дедлайн (может быть в формате YYYY-MM-DDTHH:mm или ISO)
+                            let date
+                            if (testDeadline.includes('T') && !testDeadline.includes('Z') && !testDeadline.includes('+')) {
+                              // Формат YYYY-MM-DDTHH:mm (локальное время)
+                              const [datePart, timePart] = testDeadline.split('T')
+                              date = new Date(`${datePart}T${timePart}`)
+                            } else {
+                              date = new Date(testDeadline)
+                            }
+                            return date.toLocaleString('ru-RU', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="test-settings-option-hint">
+                    После дедлайна тест будет недоступен для прохождения
+                    {published && (
+                      <span className="test-settings-editable-indicator"> (можно изменить)</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
       {/* Кнопки удаления и публикации лекции (только для существующих лекций) */}
       {!isNew && lecture.id && (
-        <div className="lecture-builder-footer">
+        <>
+          <div className="lecture-builder-footer">
           {published ? (
             <div className="lecture-builder-published-badge">
               Опубликовано
@@ -274,24 +625,55 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
           ) : (
             <button 
               className="btn-publish-lecture" 
+              disabled={!lectureId || isNew || !materials || materials.length === 0}
               onClick={async (e) => {
+                // Проверяем, что лекция создана
+                const currentLectureId = lectureId || lecture?.id
+                if (!currentLectureId) {
+                  alert('Сначала сохраните лекцию, чтобы её можно было опубликовать')
+                  return
+                }
+                
+                // Проверяем, что есть материалы
+                if (!materials || materials.length === 0) {
+                  alert('Добавьте хотя бы один материал (видео, PDF, DOCX) перед публикацией')
+                  return
+                }
+                
                 if (!confirm('Выложить лекцию для студентов? Будет выполнена транскрибация видео и парсинг PDF. Это может занять некоторое время.')) {
                   return
                 }
+                
                 const button = e.target
                 const originalText = button.textContent
                 button.disabled = true
-                button.textContent = '⏳ Обработка...'
+                setPublishing(true)
+                setPublishProgress(0)
+                
+                // Симуляция прогресса (будет заменено на реальный прогресс с SSE)
+                const progressInterval = setInterval(() => {
+                  setPublishProgress(prev => {
+                    if (prev >= 90) return prev
+                    return prev + Math.random() * 10
+                  })
+                }, 500)
                 
                 try {
-                  const response = await api.publishLecture(lecture.id)
+                  const currentLectureId = lectureId || lecture?.id
+                  console.log('Публикация лекции:', { lectureId: currentLectureId, materialsCount: materials.length })
+                  const response = await api.publishLecture(currentLectureId)
                   
+                  clearInterval(progressInterval)
+                  setPublishProgress(100)
+                  
+                  console.log('Ответ от сервера:', response)
                   alert(response.message || 'Лекция успешно опубликована')
                   setPublished(true)
                   
                   // Перезагружаем данные лекции, чтобы получить актуальное состояние
                   try {
-                    const updatedLecture = await api.getLecture(lecture.id)
+                    const currentLectureId = lectureId || lecture?.id
+                    const updatedLecture = await api.getLecture(currentLectureId)
                     setPublished(updatedLecture.published === true)
                     console.log('После публикации - published:', updatedLecture.published)
                   } catch (err) {
@@ -303,15 +685,34 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
                     onUpdate()
                   }
                 } catch (err) {
-                  alert('Ошибка публикации лекции: ' + (err.message || 'Не удалось опубликовать лекцию'))
+                  clearInterval(progressInterval)
+                  setPublishProgress(0)
+                  console.error('Ошибка публикации лекции:', err)
+                  const errorMessage = err.response?.data?.detail || err.message || 'Не удалось опубликовать лекцию'
+                  alert('Ошибка публикации лекции: ' + errorMessage)
                   button.disabled = false
                   button.textContent = originalText
+                } finally {
+                  setPublishing(false)
                 }
               }}
-              title="Выложить лекцию"
+              title={!lectureId ? "Сначала сохраните лекцию" : materials.length === 0 ? "Добавьте материалы" : "Выложить лекцию"}
             >
               📤 Выложить
             </button>
+          )}
+          {publishing && (
+            <div className="publish-progress-container">
+              <div className="publish-progress-bar">
+                <div 
+                  className="publish-progress-fill" 
+                  style={{ width: `${publishProgress}%` }}
+                ></div>
+              </div>
+              <div className="publish-progress-text">
+                Обработка... {Math.round(publishProgress)}%
+              </div>
+            </div>
           )}
           <button 
             className="btn-delete-lecture" 
@@ -334,7 +735,8 @@ function LectureBuilder({ lecture, courseId, onClose, onUpdate, onDelete }) {
           >
             🗑️ Удалить лекцию
           </button>
-        </div>
+          </div>
+        </>
       )}
 
       {/* Модальное окно для предпросмотра */}

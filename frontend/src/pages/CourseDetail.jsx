@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import LectureBuilder from '../components/lectures/LectureBuilder'
+import AssignmentsTab from '../components/assignments/AssignmentsTab'
 import '../styles/auth.css'
 import '../styles/course-detail.css'
 
@@ -126,10 +127,8 @@ function CourseDetail() {
           {activeTab === 'lectures' && courseId && (
             <LecturesTab courseId={courseId} lectures={lectures || []} onLecturesChange={loadLectures} />
           )}
-          {activeTab === 'assignments' && (
-            <div className="assignments-placeholder">
-              <p>Функционал заданий будет добавлен позже</p>
-            </div>
+          {activeTab === 'assignments' && courseId && (
+            <AssignmentsTab courseId={courseId} lectures={lectures || []} />
           )}
         </div>
       </div>

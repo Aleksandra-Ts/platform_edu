@@ -1,0 +1,14 @@
+/* Дополнительные стили для студентского dashboard */
+.student-dashboard {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #dffcf1 0%, #e6fffb 100%);
+}
+
+.grades-view {
+  padding: 2rem;
+}
+
+.grades-view .breadcrumbs {
+  margin-bottom: 2rem;
+}
+

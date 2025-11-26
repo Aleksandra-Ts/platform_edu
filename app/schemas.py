@@ -153,6 +153,22 @@ class CreateLectureRequest(BaseModel):
     course_id: int
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=2000)
+    generate_test: bool = False
+    test_generation_mode: str = "once"  # "once" или "per_student"
+    test_max_attempts: int = Field(1, ge=1, le=10)  # Максимальное количество попыток (1-10)
+    test_show_answers: bool = False  # Показывать ли правильные ответы после всех попыток
+    test_deadline: Optional[str] = None  # Дедлайн выполнения теста (ISO формат: YYYY-MM-DDTHH:MM:SS)
+
+
+class UpdateLectureRequest(BaseModel):
+    """Схема для обновления лекции"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    generate_test: Optional[bool] = None
+    test_generation_mode: Optional[str] = None  # "once" или "per_student"
+    test_max_attempts: Optional[int] = Field(None, ge=1, le=10)  # Максимальное количество попыток (1-10)
+    test_show_answers: Optional[bool] = None  # Показывать ли правильные ответы после всех попыток
+    test_deadline: Optional[str] = None  # Дедлайн выполнения теста (ISO формат: YYYY-MM-DDTHH:MM:SS)
 
 
 class LectureResponse(BaseModel):
@@ -163,6 +179,11 @@ class LectureResponse(BaseModel):
     description: Optional[str]
     created_at: Optional[str]
     published: bool = False
+    generate_test: bool = False
+    test_generation_mode: str = "once"  # "once" или "per_student"
+    test_max_attempts: int = 1  # Максимальное количество попыток
+    test_show_answers: bool = False  # Показывать ли правильные ответы после всех попыток
+    test_deadline: Optional[str] = None  # Дедлайн выполнения теста
     materials: list[LectureMaterialResponse] = Field(default_factory=list)
 
     class Config:
@@ -170,13 +191,54 @@ class LectureResponse(BaseModel):
 
 
 class ProcessedMaterialResponse(BaseModel):
-    """Схема ответа с данными обработанного материала"""
+    """Схема ответа с данными обработанного материала (RAG)"""
     id: int
+    lecture_id: int
     material_id: int
+    user_id: Optional[int] = None
     file_url: str
     file_type: str
-    processed_text: Optional[str]
-    processed_at: Optional[str]
+    processed_text: Optional[str] = None
+    embedding: Optional[list] = None  # Векторное представление (не возвращаем в API, но храним в БД)
+    processed_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionResponse(BaseModel):
+    """Схема ответа с данными вопроса"""
+    id: int
+    test_id: int
+    question_text: str
+    correct_answer: str
+    options: Optional[str] = None  # JSON строка с вариантами
+    question_type: str
+    order_index: int
+
+    class Config:
+        from_attributes = True
+
+
+class TestResponse(BaseModel):
+    """Схема ответа с данными теста"""
+    id: int
+    lecture_id: int
+    created_at: Optional[str]
+    questions: list[QuestionResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
+class TestAttemptResponse(BaseModel):
+    """Схема ответа с данными попытки прохождения теста"""
+    id: int
+    test_id: int
+    user_id: int
+    score: int
+    total_questions: int
+    completed_at: str
 
     class Config:
         from_attributes = True

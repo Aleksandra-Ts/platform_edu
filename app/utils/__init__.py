@@ -16,6 +16,13 @@ from app.utils.transcription import (
     WHISPER_AVAILABLE,
 )
 
+# Импортируем функции для эмбеддингов
+from app.utils.embeddings import (
+    generate_embedding,
+    generate_embeddings_batch,
+    get_embedding_model,
+)
+
 __all__ = [
     "build_user_response",
     "compose_full_name",
@@ -26,5 +33,8 @@ __all__ = [
     "find_ffmpeg",
     "ensure_ffmpeg_in_path",
     "WHISPER_AVAILABLE",
+    "generate_embedding",
+    "generate_embeddings_batch",
+    "get_embedding_model",
 ]
 

@@ -10,3 +10,12 @@ python-multipart
 PyPDF2
 pdfplumber
 python-docx
+pgvector
+langchain
+langchain-community
+langchain-gigachat
+gigachat
+faster-whisper
+ffmpeg-python
+numpy
+pytz

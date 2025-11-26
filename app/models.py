@@ -1,6 +1,7 @@
 """SQLAlchemy модели"""
 from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 
 from app.core.database import Base
 
@@ -78,6 +79,11 @@ class Lecture(Base):
     description = Column(Text, nullable=True)
     created_at = Column(String)  # Будем хранить как строку для простоты
     published = Column(Boolean, default=False)  # Опубликована ли лекция для студентов
+    generate_test = Column(Boolean, default=False)  # Генерировать ли тест для лекции
+    test_generation_mode = Column(String, default="once")  # "once" - один раз, "per_student" - для каждого студента
+    test_max_attempts = Column(Integer, default=1)  # Максимальное количество попыток для студента
+    test_show_answers = Column(Boolean, default=False)  # Показывать ли правильные ответы после всех попыток
+    test_deadline = Column(String, nullable=True)  # Дедлайн выполнения теста (ISO формат: YYYY-MM-DDTHH:MM:SS)
     
     # Связь с курсом
     course = relationship("Course", back_populates="lectures")
@@ -87,6 +93,9 @@ class Lecture(Base):
     
     # Обработанные материалы (транскрипты, парсинг)
     processed_materials = relationship("ProcessedMaterial", back_populates="lecture", cascade="all, delete-orphan")
+    
+    # Тесты для лекции
+    tests = relationship("Test", back_populates="lecture", cascade="all, delete-orphan")
 
 
 class LectureMaterial(Base):
@@ -106,18 +115,69 @@ class LectureMaterial(Base):
 
 
 class ProcessedMaterial(Base):
-    """Модель обработанного материала (транскрипты, парсинг)"""
+    """Модель обработанного материала (транскрипты, парсинг, эмбеддинги для RAG)"""
     __tablename__ = "processed_materials"
     
     id = Column(Integer, primary_key=True, index=True)
     lecture_id = Column(Integer, ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False)
     material_id = Column(Integer, ForeignKey("lecture_materials.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # Кто загрузил материал
     file_url = Column(String, nullable=False)  # URL файла
     file_type = Column(String, nullable=False)  # video, pdf, presentation, audio, scorm
     processed_text = Column(Text, nullable=True)  # Транскрипт или распарсенный текст
+    embedding = Column(Vector(1024), nullable=True)  # Векторное представление текста (1024 размерность для GigaChat Embeddings)
     processed_at = Column(String)  # Дата обработки
     
     # Связи
     lecture = relationship("Lecture", back_populates="processed_materials")
     material = relationship("LectureMaterial")
+    user = relationship("User")
+
+
+class Test(Base):
+    """Модель теста для лекции"""
+    __tablename__ = "tests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    lecture_id = Column(Integer, ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(String)  # Дата создания
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)  # Для режима "per_student"
+    
+    # Связи
+    lecture = relationship("Lecture", back_populates="tests")
+    questions = relationship("Question", back_populates="test", cascade="all, delete-orphan")
+    attempts = relationship("TestAttempt", back_populates="test", cascade="all, delete-orphan")
+
+
+class Question(Base):
+    """Модель вопроса в тесте"""
+    __tablename__ = "questions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("tests.id", ondelete="CASCADE"), nullable=False)
+    question_text = Column(Text, nullable=False)  # Текст вопроса
+    correct_answer = Column(Text, nullable=False)  # Правильный ответ
+    options = Column(Text, nullable=True)  # JSON строка с вариантами ответов (если есть)
+    question_type = Column(String, default="open")  # open, multiple_choice
+    order_index = Column(Integer, default=0)  # Порядок вопроса в тесте
+    
+    # Связи
+    test = relationship("Test", back_populates="questions")
+
+
+class TestAttempt(Base):
+    """Модель попытки прохождения теста студентом"""
+    __tablename__ = "test_attempts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("tests.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    answers = Column(Text, nullable=False)  # JSON строка с ответами студента
+    score = Column(Integer, nullable=False)  # Количество правильных ответов
+    total_questions = Column(Integer, nullable=False)  # Общее количество вопросов
+    completed_at = Column(String, nullable=False)  # Дата и время завершения попытки (ISO формат)
+    
+    # Связи
+    test = relationship("Test", back_populates="attempts")
+    user = relationship("User")
 

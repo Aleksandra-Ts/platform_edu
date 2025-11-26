@@ -1,0 +1,17 @@
+# Пример файла для локальной разработки
+# Скопируйте в docker-compose.override.yml и измените при необходимости
+
+services:
+  backend:
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/edu_platform
+    volumes:
+      - ./uploads:/app/uploads
+      - ./static:/app/static
+      - .:/app  # Для hot-reload в разработке
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
