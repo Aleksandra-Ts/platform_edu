@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import api from '../../services/api'
 import '../../styles/assignments.css'
 
@@ -7,6 +7,22 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
   const [submitted, setSubmitted] = useState(false)
   const [results, setResults] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Мемоизируем парсинг options для всех вопросов
+  const questionsWithParsedOptions = useMemo(() => {
+    return test.questions.map(question => {
+      let parsedOptions = []
+      try {
+        parsedOptions = question.options ? JSON.parse(question.options) : []
+      } catch (e) {
+        parsedOptions = []
+      }
+      return {
+        ...question,
+        parsedOptions
+      }
+    })
+  }, [test.questions])
 
   const handleAnswerChange = (questionId, answer) => {
     setAnswers(prev => ({
@@ -101,8 +117,9 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
             {isStudent && !submitted ? (
               <div className="answer-options">
                 {(() => {
-                  try {
-                    const options = question.options ? JSON.parse(question.options) : []
+                  const questionData = questionsWithParsedOptions.find(q => q.id === question.id)
+                  const options = questionData?.parsedOptions || []
+                  if (options.length > 0) {
                     return options.map((option, optIndex) => (
                       <label key={optIndex} className="option-label">
                         <input
@@ -116,8 +133,8 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
                         <span className="option-text">{option}</span>
                       </label>
                     ))
-                  } catch (e) {
-                    // Если не удалось распарсить options, показываем текстовое поле
+                  } else {
+                    // Если нет options, показываем текстовое поле
                     return (
                       <textarea
                         className="answer-input"
@@ -133,8 +150,9 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
             ) : isTeacher ? (
               <div className="answer-display">
                 {(() => {
-                  try {
-                    const options = question.options ? JSON.parse(question.options) : []
+                  const questionData = questionsWithParsedOptions.find(q => q.id === question.id)
+                  const options = questionData?.parsedOptions || []
+                  if (options.length > 0) {
                     return (
                       <div>
                         <div className="options-list">
@@ -152,7 +170,7 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
                         </div>
                       </div>
                     )
-                  } catch (e) {
+                  } else {
                     return (
                       <div className="correct-answer">
                         <strong>Правильный ответ:</strong> {question.correct_answer}
@@ -173,8 +191,9 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
                     ? result.correct_answer 
                     : (question.correct_answer || '')
                   
-                  try {
-                    const options = question.options ? JSON.parse(question.options) : []
+                  const questionData = questionsWithParsedOptions.find(q => q.id === question.id)
+                  const options = questionData?.parsedOptions || []
+                  if (options.length > 0) {
                     return (
                       <div>
                         <div className={`student-answer ${result?.is_correct ? 'correct' : 'incorrect'}`}>
@@ -215,7 +234,7 @@ function TestCard({ test, lectureId, lecture, role, onTestSubmitted }) {
                         ) : null}
                       </div>
                     )
-                  } catch (e) {
+                  } else {
                     return (
                       <>
                         <div className={`student-answer ${result?.is_correct ? 'correct' : 'incorrect'}`}>

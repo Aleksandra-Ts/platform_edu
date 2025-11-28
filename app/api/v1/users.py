@@ -2,10 +2,12 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import exists
 
 from app.core.security import get_current_user, pwd_context, validate_password_strength
 from app.core.database import get_db
+from app.api.v1.dependencies import require_course_access
 from app.models import Course, Group, User
 from app.schemas import ChangeOwnPasswordRequest, CourseResponse, UpdateProfileRequest, UserResponse
 from app.utils import build_user_response, compose_full_name, normalize_name
@@ -86,33 +88,38 @@ def get_my_courses(
     
     if current_user.role == "teacher":
         # Получаем все курсы, где текущий пользователь является преподавателем
-        courses = current_user.courses_taught
+        # Используем joinedload для предзагрузки groups и teachers (избегаем N+1)
+        courses = db.query(Course).join(Course.teachers).filter(
+            User.id == current_user.id
+        ).options(
+            joinedload(Course.groups),
+            joinedload(Course.teachers)
+        ).all()
     elif current_user.role == "student":
         # Получаем курсы группы студента, где есть опубликованные лекции
         if not current_user.group_id:
             return []
         
-        # Получаем все курсы группы студента
+        # Получаем все курсы группы студента с предзагрузкой groups и teachers
+        # Фильтруем только те курсы, где есть опубликованные лекции (избегаем N+1)
+        from sqlalchemy import exists
         courses = db.query(Course).join(Course.groups).filter(
             Course.groups.any(id=current_user.group_id)
+        ).filter(
+            exists().where(
+                (Lecture.course_id == Course.id) & (Lecture.published == True)
+            )
+        ).options(
+            joinedload(Course.groups),
+            joinedload(Course.teachers)
         ).all()
-        
-        # Фильтруем только те курсы, где есть опубликованные лекции
-        courses_with_published = []
-        for course in courses:
-            published_lectures_count = db.query(Lecture).filter(
-                Lecture.course_id == course.id,
-                Lecture.published == True
-            ).count()
-            if published_lectures_count > 0:
-                courses_with_published.append(course)
-        courses = courses_with_published
         logger.info(f"Студент {current_user.id} видит {len(courses)} курсов с опубликованными лекциями")
     else:
         raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям и студентам")
     
     result = []
     for course in courses:
+        # Теперь groups и teachers уже загружены, нет дополнительных запросов
         group_ids = [g.id for g in course.groups]
         group_names = [g.name for g in course.groups]
         teacher_ids = [t.id for t in course.teachers]
@@ -138,35 +145,28 @@ def get_my_course(
     """Получение курса по ID (для преподавателей и студентов)"""
     from app.models import Lecture
     
-    course = db.query(Course).filter(Course.id == course_id).first()
+    # Получаем курс с предзагрузкой groups и teachers (избегаем N+1)
+    course = db.query(Course).options(
+        joinedload(Course.groups),
+        joinedload(Course.teachers)
+    ).filter(Course.id == course_id).first()
+    
     if not course:
         raise HTTPException(status_code=404, detail="Курс не найден")
     
-    # Проверяем доступ в зависимости от роли
-    if current_user.role == "teacher":
-        # Преподаватель должен быть преподавателем этого курса
-        teacher_ids = [t.id for t in course.teachers]
-        if current_user.id not in teacher_ids:
-            raise HTTPException(status_code=403, detail="Вы не являетесь преподавателем этого курса")
-    elif current_user.role == "student":
-        # Студент должен быть в группе курса и курс должен иметь опубликованные лекции
-        if not current_user.group_id:
-            raise HTTPException(status_code=403, detail="У вас не указана группа")
-        
-        student_group_ids = [g.id for g in course.groups]
-        if current_user.group_id not in student_group_ids:
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-        
-        # Проверяем, что есть опубликованные лекции
-        published_lectures_count = db.query(Lecture).filter(
-            Lecture.course_id == course.id,
-            Lecture.published == True
-        ).count()
-        if published_lectures_count == 0:
-            raise HTTPException(status_code=403, detail="В этом курсе нет опубликованных лекций")
-    else:
-        raise HTTPException(status_code=403, detail="Доступ разрешен только преподавателям и студентам")
+    # Проверяем доступ
+    course = require_course_access(course_id, db, current_user)
     
+    # Для студентов дополнительно проверяем наличие опубликованных лекций
+    if current_user.role == "student":
+        from sqlalchemy import exists
+        has_published = db.query(exists().where(
+            (Lecture.course_id == course.id) & (Lecture.published == True)
+        )).scalar()
+        if not has_published:
+            raise HTTPException(status_code=403, detail="В этом курсе нет опубликованных лекций")
+    
+    # Теперь groups и teachers уже загружены, нет дополнительных запросов
     group_ids = [g.id for g in course.groups]
     group_names = [g.name for g in course.groups]
     teacher_ids = [t.id for t in course.teachers]

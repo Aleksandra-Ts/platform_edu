@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api'
+import { useAuth } from '../../hooks/useAuth'
 import '../../styles/course-preview.css'
 import '../../styles/lecture-preview.css'
 
 function CoursePreview({ courseId, onClose }) {
+  const { getToken } = useAuth()
   const [course, setCourse] = useState(null)
   const [lectures, setLectures] = useState([])
   const [loading, setLoading] = useState(true)
@@ -220,7 +222,7 @@ function MaterialViewer({ material, index }) {
   const loadFileAsBlob = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const API_BASE = import.meta.env.DEV ? '/api' : ''
       const url = `${API_BASE}/materials/${material.id}/file`
       

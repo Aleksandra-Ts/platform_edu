@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { useNavigation } from '../hooks/useNavigation'
+import { getCurrentRole } from '../utils/navigation'
+import Breadcrumbs from '../components/common/Breadcrumbs'
 import LectureBuilder from '../components/lectures/LectureBuilder'
 import AssignmentsTab from '../components/assignments/AssignmentsTab'
 import '../styles/auth.css'
@@ -9,8 +12,8 @@ import '../styles/course-detail.css'
 
 function CourseDetail() {
   const { courseId } = useParams()
-  const navigate = useNavigate()
   const { role } = useAuth()
+  const { goHome, goToCourses } = useNavigation()
   const [course, setCourse] = useState(null)
   const [lectures, setLectures] = useState([])
   const [activeTab, setActiveTab] = useState('lectures')
@@ -19,7 +22,8 @@ function CourseDetail() {
   useEffect(() => {
     loadCourse()
     loadLectures()
-  }, [courseId, navigate, role])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId])
 
   const loadCourse = async () => {
     try {
@@ -43,29 +47,8 @@ function CourseDetail() {
     }
   }
 
-  const handleHomeClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else if (currentRole === 'admin') {
-      navigate('/admin')
-    } else {
-      navigate('/profile')
-    }
-  }
-
-  const handleCoursesClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard?view=courses')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else {
-      navigate('/profile')
-    }
-  }
+  const handleHomeClick = goHome
+  const handleCoursesClick = goToCourses
 
   if (loading) {
     return (
@@ -93,17 +76,13 @@ function CourseDetail() {
     <div className="course-detail">
       <div className="course-detail-container">
         <div className="course-detail-header">
-          <div className="breadcrumbs">
-            <span className="breadcrumb-item" onClick={handleHomeClick}>
-              Главная
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item" onClick={handleCoursesClick}>
-              Мои курсы
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item active">{course.name}</span>
-          </div>
+          <Breadcrumbs
+            items={[
+              { label: 'Главная', onClick: handleHomeClick },
+              { label: 'Мои курсы', onClick: handleCoursesClick },
+              { label: course.name, active: true }
+            ]}
+          />
         </div>
 
         <h1 className="course-title">{course.name}</h1>
@@ -163,7 +142,7 @@ function LecturesTab({ courseId, lectures, onLecturesChange }) {
     <div className="lectures-tab">
       <div className="lectures-header">
         <h2 className="lectures-title">Лекции</h2>
-        {(role === 'teacher' || localStorage.getItem('role') === 'teacher') && (
+        {(role === 'teacher' || getCurrentRole(role) === 'teacher') && (
           <button
             className="btn-create-lecture"
             onClick={handleCreateNew}
@@ -231,7 +210,7 @@ function LectureCard({ lecture, onUpdate, onEdit }) {
   const navigate = useNavigate()
   
   const handleCardClick = () => {
-    const currentRole = role || localStorage.getItem('role')
+    const currentRole = getCurrentRole(role)
     if (currentRole === 'teacher') {
       onEdit()
     } else if (currentRole === 'student') {
@@ -239,7 +218,7 @@ function LectureCard({ lecture, onUpdate, onEdit }) {
     }
   }
 
-  const currentRole = role || localStorage.getItem('role')
+  const currentRole = getCurrentRole(role)
   const isTeacher = currentRole === 'teacher'
 
   return (

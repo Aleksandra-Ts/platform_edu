@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { getCurrentRole } from '../utils/navigation'
 import '../styles/auth.css'
 import ProfileHeader from '../components/profile_page/ProfileHeader'
 import ProfileSummary from '../components/profile_page/ProfileSummary'
@@ -97,7 +98,7 @@ function Profile() {
         <div className="profile-header-with-logout">
           <ProfileHeader />
           <div className="profile-actions">
-            {(role === 'admin' || localStorage.getItem('role') === 'admin') && (
+            {(role === 'admin' || getCurrentRole(role) === 'admin') && (
               <button
                 className="btn-outline"
                 onClick={() => navigate('/admin')}

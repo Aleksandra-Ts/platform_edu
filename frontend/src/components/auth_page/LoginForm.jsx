@@ -17,17 +17,8 @@ function LoginForm() {
     setIsError(false)
 
     try {
-      const formData = new FormData(e.target)
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        body: formData
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Ошибка входа')
-      }
+      // Используем api.login() вместо прямого fetch
+      const data = await api.login(login, password)
 
       if (data.need_change) {
         navigate(`/change_password?user_id=${data.user_id}`)
@@ -35,9 +26,7 @@ function LoginForm() {
       }
 
       if (data.access_token) {
-        localStorage.setItem('token', data.access_token)
-        localStorage.setItem('role', data.role)
-        localStorage.setItem('userId', data.user_id)
+        // Используем authLogin из useAuth, который уже работает с storage
         authLogin(data.access_token, data.role, data.user_id)
         // Редирект на dashboard в зависимости от роли
         if (data.role === 'teacher') {

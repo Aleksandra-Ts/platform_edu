@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import api from '../services/api'
+import { useSearchFilter } from '../hooks/useSearchFilter'
 import '../styles/auth.css'
 import '../styles/admin.css'
 import AdminHeader from '../components/admin_page/AdminHeader'
 import AdminTabs from '../components/admin_page/AdminTabs'
-import TeachersTab from '../components/admin_page/TeachersTab'
-import StudentsTab from '../components/admin_page/StudentsTab'
+import UsersTab from '../components/admin_page/UsersTab'
 import GroupsTab from '../components/admin_page/GroupsTab'
 import CoursesTab from '../components/admin_page/CoursesTab'
 import ExportTab from '../components/admin_page/ExportTab'
 import AdminMessages from '../components/admin_page/AdminMessages'
+import ConfirmDialog from '../components/common/ConfirmDialog'
+import AlertDialog from '../components/common/AlertDialog'
 
 function Admin() {
   const [activeTab, setActiveTab] = useState('teachersTab')
@@ -18,6 +20,10 @@ function Admin() {
   const [courses, setCourses] = useState([])
   const [message, setMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  
+  // Состояния для модальных окон
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null })
+  const [alertDialog, setAlertDialog] = useState({ isOpen: false, title: '', message: '' })
 
   // Формы
   const [teacherForm, setTeacherForm] = useState({ login: '', password: '', last_name: '', first_name: '', middle_name: '' })
@@ -26,17 +32,53 @@ function Admin() {
   const [courseForm, setCourseForm] = useState({ name: '', description: '', group_ids: [], teacher_ids: [] })
   const [exportForm, setExportForm] = useState({ role: '', group_id: '' })
 
-  // Поиск
-  const [searchTeachers, setSearchTeachers] = useState('')
-  const [searchStudents, setSearchStudents] = useState('')
-  const [searchGroups, setSearchGroups] = useState('')
-  const [searchCourses, setSearchCourses] = useState('')
+  // Фильтрация данных с помощью хука (мемоизировано)
+  const teachersList = useMemo(() => 
+    users.filter(u => u.role === 'teacher'),
+    [users]
+  )
+  const students = useMemo(() => 
+    users.filter(u => u.role === 'student'),
+    [users]
+  )
+  
+  const {
+    searchValue: searchTeachers,
+    setSearchValue: setSearchTeachers,
+    filteredData: filteredTeachers
+  } = useSearchFilter(teachersList, (teacher) => [
+    teacher.login || '',
+    teacher.full_name || ''
+  ])
+  
+  const {
+    searchValue: searchStudents,
+    setSearchValue: setSearchStudents,
+    filteredData: filteredStudents
+  } = useSearchFilter(students, (student) => [
+    student.login || '',
+    student.full_name || '',
+    student.group_name || ''
+  ])
+  
+  const {
+    searchValue: searchGroups,
+    setSearchValue: setSearchGroups,
+    filteredData: filteredGroups
+  } = useSearchFilter(groups, ['name'])
+  
+  const {
+    searchValue: searchCourses,
+    setSearchValue: setSearchCourses,
+    filteredData: filteredCourses
+  } = useSearchFilter(courses, (course) => [
+    course.name || '',
+    course.description || '',
+    ...(course.group_names || []),
+    ...(course.teacher_names || [])
+  ])
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [usersData, groupsData, coursesData] = await Promise.all([
         api.getUsers(),
@@ -49,9 +91,13 @@ function Admin() {
     } catch (err) {
       setMessage(err.message)
     }
-  }
+  }, [])
 
-  const generatePassword = () => {
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const generatePassword = useCallback(() => {
     const length = 12
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
     let password = ''
@@ -63,9 +109,9 @@ function Admin() {
       password += charset[Math.floor(Math.random() * charset.length)]
     }
     return password.split('').sort(() => Math.random() - 0.5).join('')
-  }
+  }, [])
 
-  const showMessage = (text, isSuccess = false) => {
+  const showMessage = useCallback((text, isSuccess = false) => {
     if (isSuccess) {
       setSuccessMessage(text)
       setMessage('')
@@ -73,9 +119,9 @@ function Admin() {
       setMessage(text)
       setSuccessMessage('')
     }
-  }
+  }, [])
 
-  const handleCreateTeacher = async (e) => {
+  const handleCreateTeacher = useCallback(async (e) => {
     e.preventDefault()
     try {
       await api.createUser({ ...teacherForm, role: 'teacher', group_id: null })
@@ -85,9 +131,9 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [teacherForm, showMessage, loadData])
 
-  const handleCreateStudent = async (e) => {
+  const handleCreateStudent = useCallback(async (e) => {
     e.preventDefault()
     try {
       await api.createUser({ ...studentForm, role: 'student', group_id: parseInt(studentForm.group_id) })
@@ -97,9 +143,9 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [studentForm, showMessage, loadData])
 
-  const handleCreateGroup = async (e) => {
+  const handleCreateGroup = useCallback(async (e) => {
     e.preventDefault()
     try {
       await api.createGroup(groupForm.name)
@@ -109,9 +155,9 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [groupForm, showMessage, loadData])
 
-  const handleUpdateUserGroup = async (userId, groupId) => {
+  const handleUpdateUserGroup = useCallback(async (userId, groupId) => {
     try {
       await api.updateUserGroup(userId, groupId)
       showMessage('Группа студента успешно обновлена', true)
@@ -119,46 +165,66 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [showMessage, loadData])
 
-  const handleSetTemporaryPassword = async (userId) => {
+  const handleSetTemporaryPassword = useCallback(async (userId) => {
     try {
       const result = await api.setTemporaryPassword(userId)
       const password = result.temporary_password
       showMessage(`Временный пароль установлен: ${password}`, true)
-      // Показываем пароль в alert для удобства копирования
+      // Показываем пароль в модальном окне для удобства копирования
       setTimeout(() => {
-        alert(`Временный пароль для пользователя: ${password}\n\nСкопируйте его для передачи пользователю.`)
+        setAlertDialog({
+          isOpen: true,
+          title: 'Временный пароль установлен',
+          message: `Временный пароль для пользователя: ${password}\n\nСкопируйте его для передачи пользователю.`
+        })
       }, 100)
       loadData()
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [showMessage, loadData])
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Вы уверены, что хотите удалить этого пользователя?')) return
-    try {
-      await api.deleteUser(userId)
-      showMessage('Пользователь успешно удален', true)
-      loadData()
-    } catch (err) {
-      showMessage(err.message)
-    }
-  }
+  const handleDeleteUser = useCallback((userId) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление пользователя',
+      message: 'Вы уверены, что хотите удалить этого пользователя?',
+      onConfirm: async () => {
+        try {
+          await api.deleteUser(userId)
+          showMessage('Пользователь успешно удален', true)
+          loadData()
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        } catch (err) {
+          showMessage(err.message)
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        }
+      }
+    })
+  }, [showMessage, loadData])
 
-  const handleDeleteGroup = async (groupId) => {
-    if (!window.confirm('Вы уверены, что хотите удалить эту группу?')) return
-    try {
-      await api.deleteGroup(groupId)
-      showMessage('Группа успешно удалена', true)
-      loadData()
-    } catch (err) {
-      showMessage(err.message)
-    }
-  }
+  const handleDeleteGroup = useCallback((groupId) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление группы',
+      message: 'Вы уверены, что хотите удалить эту группу?',
+      onConfirm: async () => {
+        try {
+          await api.deleteGroup(groupId)
+          showMessage('Группа успешно удалена', true)
+          loadData()
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        } catch (err) {
+          showMessage(err.message)
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        }
+      }
+    })
+  }, [showMessage, loadData])
 
-  const handleCreateCourse = async (e) => {
+  const handleCreateCourse = useCallback(async (e) => {
     e.preventDefault()
     try {
       await api.createCourse(courseForm)
@@ -168,9 +234,9 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [courseForm, showMessage, loadData])
 
-  const handleUpdateCourse = async (courseId, courseData) => {
+  const handleUpdateCourse = useCallback(async (courseId, courseData) => {
     try {
       await api.updateCourse(courseId, courseData)
       showMessage('Курс успешно обновлен', true)
@@ -178,20 +244,28 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [showMessage, loadData])
 
-  const handleDeleteCourse = async (courseId) => {
-    if (!window.confirm('Вы уверены, что хотите удалить этот курс?')) return
-    try {
-      await api.deleteCourse(courseId)
-      showMessage('Курс успешно удален', true)
-      loadData()
-    } catch (err) {
-      showMessage(err.message)
-    }
-  }
+  const handleDeleteCourse = useCallback((courseId) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление курса',
+      message: 'Вы уверены, что хотите удалить этот курс?',
+      onConfirm: async () => {
+        try {
+          await api.deleteCourse(courseId)
+          showMessage('Курс успешно удален', true)
+          loadData()
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        } catch (err) {
+          showMessage(err.message)
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+        }
+      }
+    })
+  }, [showMessage, loadData])
 
-  const handleExport = async (e) => {
+  const handleExport = useCallback(async (e) => {
     e.preventDefault()
     try {
       await api.exportUsers(exportForm.role || null, exportForm.group_id ? parseInt(exportForm.group_id) : null)
@@ -199,34 +273,15 @@ function Admin() {
     } catch (err) {
       showMessage(err.message)
     }
-  }
+  }, [exportForm, showMessage])
 
-  const teachersList = users.filter(u => u.role === 'teacher')
-  const students = users.filter(u => u.role === 'student')
-  const filteredTeachers = searchTeachers
-    ? teachersList.filter(t => 
-        (t.login || '').toLowerCase().includes(searchTeachers.toLowerCase()) ||
-        (t.full_name || '').toLowerCase().includes(searchTeachers.toLowerCase())
-      )
-    : teachersList
-  const filteredStudents = searchStudents
-    ? students.filter(s =>
-        (s.login || '').toLowerCase().includes(searchStudents.toLowerCase()) ||
-        (s.full_name || '').toLowerCase().includes(searchStudents.toLowerCase()) ||
-        (s.group_name || '').toLowerCase().includes(searchStudents.toLowerCase())
-      )
-    : students
-  const filteredGroups = searchGroups
-    ? groups.filter(g => g.name.toLowerCase().includes(searchGroups.toLowerCase()))
-    : groups
-  const filteredCourses = searchCourses
-    ? courses.filter(c =>
-        (c.name || '').toLowerCase().includes(searchCourses.toLowerCase()) ||
-        (c.description || '').toLowerCase().includes(searchCourses.toLowerCase()) ||
-        (c.group_names || []).some(gn => gn.toLowerCase().includes(searchCourses.toLowerCase())) ||
-        (c.teacher_names || []).some(tn => tn.toLowerCase().includes(searchCourses.toLowerCase()))
-      )
-    : courses
+  const handleCloseConfirmDialog = useCallback(() => {
+    setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
+  }, [])
+
+  const handleCloseAlertDialog = useCallback(() => {
+    setAlertDialog({ isOpen: false, title: '', message: '' })
+  }, [])
 
   return (
     <main className="admin-layout">
@@ -235,12 +290,13 @@ function Admin() {
         <AdminTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
         {activeTab === 'teachersTab' && (
-          <TeachersTab
+          <UsersTab
+            userType="teacher"
             form={teacherForm}
             setForm={setTeacherForm}
             onSubmit={handleCreateTeacher}
             generatePassword={generatePassword}
-            teachers={filteredTeachers}
+            users={filteredTeachers}
             searchValue={searchTeachers}
             onSearchChange={setSearchTeachers}
             onDelete={handleDeleteUser}
@@ -249,13 +305,14 @@ function Admin() {
         )}
 
         {activeTab === 'studentsTab' && (
-          <StudentsTab
+          <UsersTab
+            userType="student"
             form={studentForm}
             setForm={setStudentForm}
             onSubmit={handleCreateStudent}
             generatePassword={generatePassword}
             groups={groups}
-            students={filteredStudents}
+            users={filteredStudents}
             searchValue={searchStudents}
             onSearchChange={setSearchStudents}
             onDelete={handleDeleteUser}
@@ -301,6 +358,21 @@ function Admin() {
         )}
 
         <AdminMessages message={message} successMessage={successMessage} />
+        
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={handleCloseConfirmDialog}
+        />
+        
+        <AlertDialog
+          isOpen={alertDialog.isOpen}
+          title={alertDialog.title}
+          message={alertDialog.message}
+          onClose={handleCloseAlertDialog}
+        />
       </section>
     </main>
   )

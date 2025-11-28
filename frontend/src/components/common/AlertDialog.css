@@ -1,0 +1,5 @@
+/* Импортируем общие стили из ConfirmDialog.css */
+@import './ConfirmDialog.css';
+
+/* Дополнительные стили для AlertDialog, если нужны */
+

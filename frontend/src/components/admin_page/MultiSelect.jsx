@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import './MultiSelect.css'
 
 function MultiSelect({ 
   options, 
@@ -43,10 +44,12 @@ function MultiSelect({
 
   // Закрытие при клике вне компонента
   useEffect(() => {
+    let timeoutId = null
+
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         // Небольшая задержка, чтобы onChange успел сработать
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           setIsOpen(false)
           setSearch('')
         }, 100)
@@ -59,129 +62,46 @@ function MultiSelect({
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      // Очищаем timeout при размонтировании
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
   }, [isOpen])
 
   return (
-    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={dropdownRef} className="multi-select-container">
       <div
         onClick={(e) => {
           e.preventDefault()
           e.stopPropagation()
           setIsOpen(!isOpen)
         }}
-        className="multi-select-trigger"
-        style={{
-          padding: '0.875rem 1rem',
-          border: '1px solid rgba(17, 91, 73, 0.18)',
-          borderRadius: '18px',
-          cursor: 'pointer',
-          background: 'rgba(255, 255, 255, 0.9)',
-          minHeight: '48px',
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '6px',
-          transition: 'all 0.2s ease',
-          position: 'relative'
-        }}
-        onMouseEnter={(e) => {
-          if (!isOpen) {
-            e.currentTarget.style.borderColor = 'rgba(17, 91, 73, 0.3)'
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.95)'
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isOpen) {
-            e.currentTarget.style.borderColor = 'rgba(17, 91, 73, 0.18)'
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)'
-          }
-        }}
+        className={`multi-select-trigger ${isOpen ? 'multi-select-trigger--open' : ''}`}
       >
         {selectedOptions.length === 0 ? (
-          <span style={{ color: 'rgba(11, 47, 36, 0.5)', fontSize: '1rem' }}>{placeholder}</span>
+          <span className="multi-select-placeholder">{placeholder}</span>
         ) : (
           <>
             {selectedOptions.map(opt => (
-              <span
-                key={opt.id}
-                className="multi-select-tag"
-                style={{
-                  background: 'linear-gradient(135deg, #0b3d2c, #0f6b51)',
-                  color: 'white',
-                  padding: '6px 12px',
-                  borderRadius: '12px',
-                  fontSize: '0.9rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '500',
-                  boxShadow: '0 2px 4px rgba(15, 60, 47, 0.2)',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.05)'
-                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(15, 60, 47, 0.3)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)'
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(15, 60, 47, 0.2)'
-                }}
-              >
+              <span key={opt.id} className="multi-select-tag">
                 {opt.name}
                 <button
                   onClick={(e) => handleRemove(opt.id, e)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.3)',
-                    border: 'none',
-                    color: 'white',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '0',
-                    lineHeight: '1',
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.2s ease',
-                    fontWeight: 'bold'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.5)'
-                    e.currentTarget.style.transform = 'rotate(90deg)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'
-                    e.currentTarget.style.transform = 'rotate(0deg)'
-                  }}
+                  className="multi-select-tag-remove"
                 >
                   ×
                 </button>
               </span>
             ))}
             {selectedOptions.length > 0 && (
-              <span style={{ 
-                color: 'rgba(11, 47, 36, 0.6)', 
-                fontSize: '0.85rem',
-                marginLeft: 'auto',
-                paddingLeft: '8px'
-              }}>
+              <span className="multi-select-count">
                 {selectedOptions.length} выбрано
               </span>
             )}
           </>
         )}
-        <span
-          style={{
-            marginLeft: 'auto',
-            color: 'rgba(11, 47, 36, 0.5)',
-            fontSize: '1.2rem',
-            transition: 'transform 0.2s ease',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)'
-          }}
-        >
+        <span className={`multi-select-arrow ${isOpen ? 'multi-select-arrow--open' : ''}`}>
           ▼
         </span>
       </div>
@@ -189,58 +109,20 @@ function MultiSelect({
         <div
           className="multi-select-dropdown"
           onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            background: 'white',
-            border: '1px solid rgba(17, 91, 73, 0.18)',
-            borderRadius: '18px',
-            marginTop: '4px',
-            maxHeight: '320px',
-            overflow: 'hidden',
-            zIndex: 1000,
-            boxShadow: '0 8px 24px rgba(15, 60, 47, 0.15)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
         >
-          <div style={{ padding: '12px', borderBottom: '1px solid rgba(17, 91, 73, 0.1)' }}>
+          <div className="multi-select-search-container">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                border: '1px solid rgba(17, 91, 73, 0.18)',
-                borderRadius: '12px',
-                fontSize: '1rem',
-                outline: 'none',
-                transition: 'all 0.2s ease',
-                boxSizing: 'border-box'
-              }}
+              className="multi-select-search"
               onClick={(e) => e.stopPropagation()}
-              onFocus={(e) => {
-                e.target.style.borderColor = 'rgba(17, 91, 73, 0.45)'
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 230, 173, 0.18)'
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = 'rgba(17, 91, 73, 0.18)'
-                e.target.style.boxShadow = 'none'
-              }}
             />
           </div>
-          <div style={{ overflowY: 'auto', maxHeight: '260px' }}>
+          <div className="multi-select-options">
             {filteredOptions.length === 0 ? (
-              <div style={{ 
-                padding: '24px', 
-                color: 'rgba(11, 47, 36, 0.5)', 
-                textAlign: 'center',
-                fontSize: '0.95rem'
-              }}>
+              <div className="multi-select-empty">
                 {search ? 'Ничего не найдено' : 'Нет доступных вариантов'}
               </div>
             ) : (
@@ -254,51 +136,14 @@ function MultiSelect({
                       e.stopPropagation()
                       handleToggle(opt.id, e)
                     }}
-                    style={{
-                      padding: '12px 16px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(0, 230, 173, 0.1)' : 'white',
-                      borderBottom: '1px solid rgba(17, 91, 73, 0.08)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      transition: 'all 0.2s ease',
-                      position: 'relative'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.background = 'rgba(0, 230, 173, 0.05)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.background = 'white'
-                      }
-                    }}
+                    className={`multi-select-option ${isSelected ? 'multi-select-option--selected' : ''}`}
                   >
-                    <div
-                      style={{
-                        width: '20px',
-                        height: '20px',
-                        border: `2px solid ${isSelected ? '#0f6b51' : 'rgba(17, 91, 73, 0.3)'}`,
-                        borderRadius: '4px',
-                        background: isSelected ? '#0f6b51' : 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s ease',
-                        flexShrink: 0
-                      }}
-                    >
+                    <div className={`multi-select-checkbox ${isSelected ? 'multi-select-checkbox--checked' : ''}`}>
                       {isSelected && (
-                        <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                        <span className="multi-select-checkbox-icon">✓</span>
                       )}
                     </div>
-                    <span style={{ 
-                      flex: 1,
-                      color: isSelected ? '#0b3d2c' : 'rgba(11, 47, 36, 0.8)',
-                      fontWeight: isSelected ? '500' : '400'
-                    }}>
+                    <span className={`multi-select-option-label ${isSelected ? 'multi-select-option-label--selected' : ''}`}>
                       {opt.name}
                     </span>
                   </div>

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.api.v1.dependencies import require_lecture_access, require_lecture_teacher_access
 from app.models import Test, Question, Lecture, User, Course, ProcessedMaterial, TestAttempt, Group
 from app.schemas import TestResponse, QuestionResponse
 
@@ -77,13 +78,20 @@ def generate_test_for_student(db: Session, lecture_id: int, student_id: int) -> 
                 )
                 db.add(question)
             
-            db.commit()
-            logger.info(f"Создан тест из {len(all_questions)} вопросов для студента {student_id}")
-            return test
+            # Используем транзакцию для атомарности создания теста и вопросов
+            try:
+                db.commit()
+                logger.info(f"Создан тест из {len(all_questions)} вопросов для студента {student_id}")
+                return test
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Ошибка при сохранении теста для студента {student_id}: {e}", exc_info=True)
+                return None
         else:
             logger.warning(f"Не удалось сгенерировать вопросы для студента {student_id}")
             return None
     except Exception as e:
+        db.rollback()
         logger.error(f"Ошибка генерации теста для студента {student_id}: {e}", exc_info=True)
         return None
 
@@ -97,29 +105,13 @@ def get_lecture_test(
     current_user: User = Depends(get_current_user),
 ):
     """Получение теста для лекции"""
-    lecture = db.query(Lecture).filter(Lecture.id == lecture_id).first()
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Лекция не найдена")
-    
-    course = db.query(Course).filter(Course.id == lecture.course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
-    
-    # Проверяем права доступа
-    if current_user.role == "teacher":
-        teacher_ids = [t.id for t in course.teachers]
-        if current_user.id not in teacher_ids:
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-    elif current_user.role == "student":
-        if not lecture.published:
-            raise HTTPException(status_code=403, detail="Лекция не опубликована")
-        student_group_ids = [g.id for g in course.groups]
-        if current_user.group_id not in student_group_ids:
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-    elif current_user.role == "admin":
-        pass  # Админ имеет доступ
-    else:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    # Проверяем доступ через зависимость
+    lecture = require_lecture_access(
+        lecture_id,
+        db,
+        current_user,
+        require_published=(current_user.role == "student")
+    )
     
     # Проверяем, включена ли генерация теста
     if not lecture.generate_test:
@@ -382,29 +374,34 @@ def check_test_answers(
     total_questions = len(questions)
     score = (correct_count / total_questions * 100) if total_questions > 0 else 0
     
-    # Сохраняем попытку студента
-    attempt = TestAttempt(
-        test_id=test.id,
-        user_id=current_user.id,
-        answers=json.dumps(answers),
-        score=correct_count,
-        total_questions=total_questions,
-        completed_at=datetime.now().isoformat()
-    )
-    db.add(attempt)
-    db.flush()  # Сохраняем в БД, но не коммитим еще
-    
-    # Определяем, показывать ли правильные ответы
-    # Правильные ответы показываются только после дедлайна (чтобы студенты не списывали)
-    show_answers = False
-    # Подсчитываем попытки ПОСЛЕ сохранения (включая текущую)
-    attempts_count = db.query(TestAttempt).filter(
-        TestAttempt.test_id == test.id,
-        TestAttempt.user_id == current_user.id
-    ).count()
-    
-    # Теперь коммитим
-    db.commit()
+    # Сохраняем попытку студента в транзакции
+    try:
+        attempt = TestAttempt(
+            test_id=test.id,
+            user_id=current_user.id,
+            answers=json.dumps(answers),
+            score=correct_count,
+            total_questions=total_questions,
+            completed_at=datetime.now().isoformat()
+        )
+        db.add(attempt)
+        db.flush()  # Сохраняем в БД, но не коммитим еще
+        
+        # Определяем, показывать ли правильные ответы
+        # Правильные ответы показываются только после дедлайна (чтобы студенты не списывали)
+        show_answers = False
+        # Подсчитываем попытки ПОСЛЕ сохранения (включая текущую)
+        attempts_count = db.query(TestAttempt).filter(
+            TestAttempt.test_id == test.id,
+            TestAttempt.user_id == current_user.id
+        ).count()
+        
+        # Коммитим транзакцию
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка при сохранении попытки теста {test.id} для пользователя {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка при сохранении результатов теста")
     
     # Проверяем дедлайн для показа ответов
     deadline_passed = False
@@ -580,6 +577,7 @@ def get_test_attempts(
 @router.get("/lectures/{lecture_id}/test/all-attempts")
 def get_all_test_attempts(
     lecture_id: int,
+    lecture: Lecture = Depends(require_lecture_teacher_access),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -587,19 +585,7 @@ def get_all_test_attempts(
     if current_user.role not in ["teacher", "admin"]:
         raise HTTPException(status_code=403, detail="Только преподаватели и админы могут просматривать все попытки")
     
-    lecture = db.query(Lecture).filter(Lecture.id == lecture_id).first()
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Лекция не найдена")
-    
-    # Проверяем, что преподаватель имеет доступ к курсу
-    course = db.query(Course).filter(Course.id == lecture.course_id).first()
-    if not course:
-        raise HTTPException(status_code=404, detail="Курс не найден")
-    
-    if current_user.role == "teacher":
-        teacher_ids = [t.id for t in course.teachers]
-        if current_user.id not in teacher_ids:
-            raise HTTPException(status_code=403, detail="Вы не являетесь преподавателем этого курса")
+    # Проверка доступа выполнена через зависимость require_lecture_teacher_access
     
     if not lecture.generate_test:
         raise HTTPException(status_code=404, detail="Генерация теста для этой лекции отключена")
@@ -715,7 +701,15 @@ def get_all_test_attempts(
     else:
         average_score = 0
     
-    # Получаем список групп и студентов для фильтров
+    # Получаем курс из лекции с предзагрузкой groups (избегаем N+1)
+    from sqlalchemy.orm import joinedload
+    course = db.query(Course).options(
+        joinedload(Course.groups)
+    ).filter(Course.id == lecture.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    
+    # Получаем список групп и студентов для фильтров (groups уже загружены)
     course_groups = course.groups
     all_course_students = []
     for group in course_groups:

@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
 from app.core.database import SessionLocal, init_database
+from app.core.limiter import limiter
 from app.api.v1 import api_router
 from app.utils import create_default_admin
 
@@ -23,13 +24,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# Импорты для rate limiting (опционально, если slowapi установлен)
+try:
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    SLOWAPI_AVAILABLE = True
+except ImportError:
+    SLOWAPI_AVAILABLE = False
+
 # Создание приложения
 app = FastAPI()
 
+# Настройка rate limiting (если slowapi доступен)
+if SLOWAPI_AVAILABLE:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, lambda request, exc: JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}"}
+    ))
+    app.add_middleware(SlowAPIMiddleware)
+    logger.info("Rate limiting включен")
+else:
+    logger.warning("slowapi не установлен, rate limiting отключен. Установите: pip install slowapi redis")
+
 # Настройка CORS для React
+from app.core.config import CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -128,9 +150,15 @@ async def startup_event():
         """Предзагрузка модели Whisper в отдельном потоке"""
         try:
             from app.utils.transcription import get_whisper_model, WHISPER_AVAILABLE
+            from app.core.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE
+            
             if WHISPER_AVAILABLE:
-                logger.info("Предзагрузка модели Whisper (base)...")
-                model = get_whisper_model(model_name="base", device="cpu", compute_type="int8")
+                logger.info(f"Предзагрузка модели Whisper ({WHISPER_MODEL})...")
+                model = get_whisper_model(
+                    model_name=WHISPER_MODEL, 
+                    device=WHISPER_DEVICE, 
+                    compute_type=WHISPER_COMPUTE_TYPE
+                )
                 logger.info("Модель Whisper успешно предзагружена и готова к использованию")
             else:
                 logger.warning("Whisper недоступен, предзагрузка пропущена")

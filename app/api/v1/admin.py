@@ -8,7 +8,7 @@ from urllib.parse import quote
 import xlsxwriter
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
 
 from app.core.security import require_admin
@@ -40,20 +40,28 @@ router = APIRouter()
 
 @router.get("/admin/users", response_model=List[UserResponse])
 def list_users(
+    skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
+    limit: int = Query(100, ge=1, le=500, description="Максимальное количество записей"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Получение списка всех пользователей"""
-    users = db.query(User).order_by(User.id).all()
+    """Получение списка всех пользователей с пагинацией"""
+    # Получаем пользователей с пагинацией
+    users = db.query(User).order_by(User.id).offset(skip).limit(limit).all()
+    
     group_ids = {user.group_id for user in users if user.group_id is not None}
     groups_map = {}
     if group_ids:
         groups = db.query(Group).filter(Group.id.in_(group_ids)).all()
         groups_map = {group.id: group.name for group in groups}
-    return [
+    
+    result = [
         build_user_response(user, groups_map.get(user.group_id))
         for user in users
     ]
+    
+    # Возвращаем результат (можно добавить метаданные в заголовки или в ответ)
+    return result
 
 
 @router.post("/admin/create_user")
@@ -213,11 +221,13 @@ def delete_user(
 
 @router.get("/admin/groups", response_model=List[GroupResponse])
 def list_groups(
+    skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
+    limit: int = Query(100, ge=1, le=500, description="Максимальное количество записей"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Получение списка всех групп"""
-    groups = db.query(Group).order_by(Group.name).all()
+    """Получение списка всех групп с пагинацией"""
+    groups = db.query(Group).order_by(Group.name).offset(skip).limit(limit).all()
     return [GroupResponse(id=group.id, name=group.name) for group in groups]
 
 
@@ -261,10 +271,12 @@ def delete_group(
 @router.get("/admin/groups/{group_id}/users", response_model=List[UserResponse])
 def list_group_users(
     group_id: int,
+    skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
+    limit: int = Query(100, ge=1, le=500, description="Максимальное количество записей"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Получение списка пользователей группы"""
+    """Получение списка пользователей группы с пагинацией"""
     group = db.query(Group).filter(Group.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Группа не найдена")
@@ -272,6 +284,8 @@ def list_group_users(
         db.query(User)
         .filter(User.group_id == group_id)
         .order_by(User.last_name, User.first_name, User.id)
+        .offset(skip)
+        .limit(limit)
         .all()
     )
     return [build_user_response(user, group.name) for user in users]
@@ -279,13 +293,22 @@ def list_group_users(
 
 @router.get("/admin/courses", response_model=List[CourseResponse])
 def list_courses(
+    skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
+    limit: int = Query(100, ge=1, le=500, description="Максимальное количество записей"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Получение списка всех курсов"""
-    courses = db.query(Course).order_by(Course.name).all()
+    """Получение списка всех курсов с пагинацией"""
+    # Используем joinedload для предзагрузки groups и teachers (избегаем N+1)
+    from sqlalchemy.orm import joinedload
+    courses = db.query(Course).options(
+        joinedload(Course.groups),
+        joinedload(Course.teachers)
+    ).order_by(Course.name).offset(skip).limit(limit).all()
+    
     result = []
     for course in courses:
+        # Теперь groups и teachers уже загружены, нет дополнительных запросов
         group_ids = [g.id for g in course.groups]
         group_names = [g.name for g in course.groups]
         teacher_ids = [t.id for t in course.teachers]
@@ -316,8 +339,10 @@ def create_course(
         if len(groups) != len(payload.group_ids):
             raise HTTPException(status_code=400, detail="Одна или несколько групп не найдены")
         
-        # Проверяем, что у выбранных групп нет курса с таким же названием
-        conflicting_courses = db.query(Course).join(
+        # Проверяем, что у выбранных групп нет курса с таким же названием (с предзагрузкой groups)
+        conflicting_courses = db.query(Course).options(
+            joinedload(Course.groups)
+        ).join(
             course_groups, Course.id == course_groups.c.course_id
         ).filter(
             and_(
@@ -329,6 +354,7 @@ def create_course(
         if conflicting_courses:
             conflicting_group_names = []
             for course in conflicting_courses:
+                # groups уже загружены, нет дополнительных запросов
                 course_group_ids = [g.id for g in course.groups]
                 overlapping_groups = [g.name for g in groups if g.id in course_group_ids]
                 conflicting_group_names.extend(overlapping_groups)
@@ -348,17 +374,27 @@ def create_course(
         if len(teachers) != len(payload.teacher_ids):
             raise HTTPException(status_code=400, detail="Один или несколько преподавателей не найдены или не являются преподавателями")
     
-    course = Course(
-        name=payload.name,
-        description=payload.description
-    )
-    course.groups = groups
-    course.teachers = teachers
+    try:
+        course = Course(
+            name=payload.name,
+            description=payload.description
+        )
+        course.groups = groups
+        course.teachers = teachers
+        
+        db.add(course)
+        db.commit()
+        # Перезагружаем курс с предзагрузкой для получения обновленных данных
+        course = db.query(Course).options(
+            joinedload(Course.groups),
+            joinedload(Course.teachers)
+        ).filter(Course.id == course.id).first()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка при создании курса: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка при создании курса")
     
-    db.add(course)
-    db.commit()
-    db.refresh(course)
-    
+    # Теперь groups и teachers уже загружены, нет дополнительных запросов
     group_ids = [g.id for g in course.groups]
     group_names = [g.name for g in course.groups]
     teacher_ids = [t.id for t in course.teachers]
@@ -382,10 +418,15 @@ def get_course(
     current_user: User = Depends(require_admin),
 ):
     """Получение курса по ID"""
-    course = db.query(Course).filter(Course.id == course_id).first()
+    # Получаем курс с предзагрузкой groups и teachers (избегаем N+1)
+    course = db.query(Course).options(
+        joinedload(Course.groups),
+        joinedload(Course.teachers)
+    ).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Курс не найден")
     
+    # Теперь groups и teachers уже загружены, нет дополнительных запросов
     group_ids = [g.id for g in course.groups]
     group_names = [g.name for g in course.groups]
     teacher_ids = [t.id for t in course.teachers]
@@ -410,7 +451,11 @@ def update_course(
     current_user: User = Depends(require_admin),
 ):
     """Обновление курса"""
-    course = db.query(Course).filter(Course.id == course_id).first()
+    # Получаем курс с предзагрузкой groups и teachers (избегаем N+1)
+    course = db.query(Course).options(
+        joinedload(Course.groups),
+        joinedload(Course.teachers)
+    ).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Курс не найден")
     
@@ -426,8 +471,10 @@ def update_course(
             if len(groups) != len(payload.group_ids):
                 raise HTTPException(status_code=400, detail="Одна или несколько групп не найдены")
             
-            # Проверяем, что у выбранных групп нет другого курса с таким же названием
-            conflicting_courses = db.query(Course).join(
+            # Проверяем, что у выбранных групп нет другого курса с таким же названием (с предзагрузкой groups)
+            conflicting_courses = db.query(Course).options(
+                joinedload(Course.groups)
+            ).join(
                 course_groups, Course.id == course_groups.c.course_id
             ).filter(
                 and_(
@@ -440,6 +487,7 @@ def update_course(
             if conflicting_courses:
                 conflicting_group_names = []
                 for conflicting_course in conflicting_courses:
+                    # groups уже загружены, нет дополнительных запросов
                     conflicting_course_group_ids = [g.id for g in conflicting_course.groups]
                     overlapping_groups = [g.name for g in groups if g.id in conflicting_course_group_ids]
                     conflicting_group_names.extend(overlapping_groups)
@@ -451,14 +499,17 @@ def update_course(
         course.groups = groups
         groups_to_check = groups
     else:
-        # Если группы не обновляются, проверяем текущие группы
+        # Если группы не обновляются, проверяем текущие группы (уже загружены)
         groups_to_check = course.groups
     
-    # Если изменяется только название, проверяем текущие группы
+            # Если изменяется только название, проверяем текущие группы
     if payload.name is not None and payload.group_ids is None:
         if groups_to_check:
             group_ids_to_check = [g.id for g in groups_to_check]
-            conflicting_courses = db.query(Course).join(
+            # С предзагрузкой groups для избежания N+1
+            conflicting_courses = db.query(Course).options(
+                joinedload(Course.groups)
+            ).join(
                 course_groups, Course.id == course_groups.c.course_id
             ).filter(
                 and_(
@@ -471,6 +522,7 @@ def update_course(
             if conflicting_courses:
                 conflicting_group_names = []
                 for conflicting_course in conflicting_courses:
+                    # groups уже загружены, нет дополнительных запросов
                     conflicting_course_group_ids = [g.id for g in conflicting_course.groups]
                     overlapping_groups = [g.name for g in groups_to_check if g.id in conflicting_course_group_ids]
                     conflicting_group_names.extend(overlapping_groups)
@@ -480,26 +532,39 @@ def update_course(
                     detail=f"Курс с названием '{payload.name}' уже существует для групп: {', '.join(conflicting_group_names)}"
                 )
     
-    if payload.name is not None:
-        course.name = payload.name
-    if payload.description is not None:
-        course.description = payload.description
+    try:
+        if payload.name is not None:
+            course.name = payload.name
+        if payload.description is not None:
+            course.description = payload.description
+        
+        # Обновляем преподавателей, если указаны
+        if payload.teacher_ids is not None:
+            teachers = []
+            if payload.teacher_ids:
+                teachers = db.query(User).filter(
+                    User.id.in_(payload.teacher_ids),
+                    User.role == 'teacher'
+                ).all()
+                if len(teachers) != len(payload.teacher_ids):
+                    raise HTTPException(status_code=400, detail="Один или несколько преподавателей не найдены или не являются преподавателями")
+            course.teachers = teachers
+        
+        db.commit()
+        # Перезагружаем курс с предзагрузкой для получения обновленных данных
+        course = db.query(Course).options(
+            joinedload(Course.groups),
+            joinedload(Course.teachers)
+        ).filter(Course.id == course_id).first()
+    except HTTPException:
+        # Перебрасываем HTTPException без rollback
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка при обновлении курса {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка при обновлении курса")
     
-    # Обновляем преподавателей, если указаны
-    if payload.teacher_ids is not None:
-        teachers = []
-        if payload.teacher_ids:
-            teachers = db.query(User).filter(
-                User.id.in_(payload.teacher_ids),
-                User.role == 'teacher'
-            ).all()
-            if len(teachers) != len(payload.teacher_ids):
-                raise HTTPException(status_code=400, detail="Один или несколько преподавателей не найдены или не являются преподавателями")
-        course.teachers = teachers
-    
-    db.commit()
-    db.refresh(course)
-    
+    # Теперь groups и teachers уже загружены, нет дополнительных запросов
     group_ids = [g.id for g in course.groups]
     group_names = [g.name for g in course.groups]
     teacher_ids = [t.id for t in course.teachers]

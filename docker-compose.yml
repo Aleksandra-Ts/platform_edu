@@ -25,9 +25,23 @@ services:
       dockerfile: Dockerfile.backend
     container_name: edu_platform_backend
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/edu_platform
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/edu_platform}
       SECRET_KEY: ${SECRET_KEY:-secret}
       GIGA_API_KEY: ${GIGA_API_KEY:-}
+      # GigaChat настройки
+      GIGACHAT_MODEL: ${GIGACHAT_MODEL:-GigaChat}
+      GIGACHAT_SCOPE: ${GIGACHAT_SCOPE:-GIGACHAT_API_CORP}
+      GIGACHAT_TEMPERATURE: ${GIGACHAT_TEMPERATURE:-0.7}
+      GIGACHAT_EMBEDDINGS_MODEL: ${GIGACHAT_EMBEDDINGS_MODEL:-Embeddings}
+      # Whisper настройки
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      # JWT настройки
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      # CORS (обязательно для работы фронтенда)
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     ports:
       - "9000:8000"
     volumes:

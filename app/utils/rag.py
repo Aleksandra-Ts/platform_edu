@@ -1,11 +1,15 @@
 """Утилиты для RAG (Retrieval-Augmented Generation) и генерации вопросов"""
 import logging
+import threading
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import json
 
 logger = logging.getLogger(__name__)
+
+# Семафор для ограничения одновременных запросов к GigaChat API (максимум 10)
+_gigachat_semaphore = threading.Semaphore(10)
 
 # Попытка импортировать GigaChat для генерации вопросов
 GIGACHAT_CHAT_AVAILABLE = False
@@ -114,19 +118,19 @@ def generate_questions_from_text(
         return None
     
     try:
-        import os
-        api_key = os.getenv("GIGA_API_KEY")
-        if not api_key:
+        from app.core.config import GIGA_API_KEY, GIGACHAT_MODEL, GIGACHAT_SCOPE, GIGACHAT_TEMPERATURE
+        
+        if not GIGA_API_KEY:
             logger.error("GIGA_API_KEY не установлен")
             return None
         
         # Инициализируем GigaChat
         chat = GigaChat(
-            credentials=api_key,
-            model="GigaChat",
-            scope="GIGACHAT_API_CORP",
+            credentials=GIGA_API_KEY,
+            model=GIGACHAT_MODEL,
+            scope=GIGACHAT_SCOPE,
             verify_ssl_certs=False,
-            temperature=0.7
+            temperature=GIGACHAT_TEMPERATURE
         )
         
         # Ограничиваем длину текста для промпта (GigaChat имеет лимит)
@@ -161,7 +165,9 @@ def generate_questions_from_text(
 Верни ТОЛЬКО валидный JSON, без дополнительного текста."""
 
         # Генерируем вопросы
-        response = chat.invoke(prompt)
+        # Ограничиваем одновременные запросы к GigaChat через семафор
+        with _gigachat_semaphore:
+            response = chat.invoke(prompt)
         
         # Парсим ответ
         response_text = response.content if hasattr(response, 'content') else str(response)

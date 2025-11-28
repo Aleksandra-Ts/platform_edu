@@ -32,13 +32,22 @@ _whisper_models_lock = threading.Lock()
 _whisper_models_loading = {}  # Отслеживание загрузки моделей
 
 
-def get_whisper_model(model_name: str = "base", device: str = "cpu", compute_type: str = "int8"):
+def get_whisper_model(model_name: str = None, device: str = None, compute_type: str = None):
     """
     Получает модель Whisper из кэша или загружает новую.
     Модели кэшируются для переиспользования и избежания конфликтов блокировок.
+    
+    Если параметры не переданы, используются значения из конфигурации (app.core.config).
     """
     if not WHISPER_AVAILABLE:
         raise ImportError("faster-whisper не установлен. Установите: pip install faster-whisper")
+    
+    # Используем значения из конфигурации, если параметры не переданы
+    if model_name is None or device is None or compute_type is None:
+        from app.core.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE
+        model_name = model_name or WHISPER_MODEL
+        device = device or WHISPER_DEVICE
+        compute_type = compute_type or WHISPER_COMPUTE_TYPE
     
     cache_key = f"{model_name}_{device}_{compute_type}"
     
@@ -281,17 +290,23 @@ def process_file_with_queue(model, input_file, temp_dir, idx, total_files, messa
         return None
 
 
-def transcribe_file(file_path: Path, model_name: str = "base") -> str:
+def transcribe_file(file_path: Path, model_name: str = None) -> str:
     """
     Транскрибирует один файл (видео или аудио) используя faster-whisper
     
     Args:
         file_path: Путь к файлу
-        model_name: Название модели Whisper (tiny, base, small, medium, large)
+        model_name: Название модели Whisper (tiny, base, small, medium, large).
+                   Если не указано, используется значение из конфигурации.
     
     Returns:
         Текст транскрипта
     """
+    # Используем значение из конфигурации, если не передано
+    if model_name is None:
+        from app.core.config import WHISPER_MODEL
+        model_name = WHISPER_MODEL
+    
     logger.info(f"transcribe_file вызван для файла: {file_path}, модель: {model_name}")
     
     if not WHISPER_AVAILABLE:
@@ -315,7 +330,8 @@ def transcribe_file(file_path: Path, model_name: str = "base") -> str:
     
     # Получаем модель из кэша (загружается один раз и переиспользуется)
     logger.info(f"Получение модели Whisper из кэша: {model_name}")
-    model = get_whisper_model(model_name=model_name, device="cpu", compute_type="int8")
+    # get_whisper_model теперь сам использует значения из конфигурации, если не переданы
+    model = get_whisper_model(model_name=model_name)
     logger.info(f"Модель получена, начинаем транскрибацию")
     
     # Создаем временную директорию для аудио

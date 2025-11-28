@@ -1,10 +1,33 @@
+import storage from './storage'
+
 class ApiClient {
   constructor() {
     this.baseURL = '/api'
+    this.navigationHandler = null // Будет установлен извне для навигации
+  }
+
+  // Установка обработчика навигации (вызывается из App или контекста)
+  setNavigationHandler(handler) {
+    this.navigationHandler = handler
+  }
+
+  // Централизованная обработка 401 ошибки
+  handleUnauthorized() {
+    storage.clearAuth()
+    if (!window.location.pathname.includes('/login')) {
+      // Используем навигацию через обработчик, если доступен, иначе fallback
+      if (this.navigationHandler) {
+        this.navigationHandler('/login')
+      } else {
+        // Fallback для случаев, когда навигация еще не установлена
+        window.location.href = '/login'
+      }
+    }
+    throw new Error('Unauthorized: Session expired or invalid token.')
   }
 
   async request(endpoint, options = {}) {
-    const token = localStorage.getItem('token')
+    const token = storage.getToken()
     const url = `${this.baseURL}${endpoint}`
     
     const config = {
@@ -20,25 +43,48 @@ class ApiClient {
       const response = await fetch(url, config)
       
       if (response.status === 401) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('role')
-        localStorage.removeItem('userId')
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
-        }
-        throw new Error('Unauthorized: Session expired or invalid token.')
+        this.handleUnauthorized() // Бросает исключение, выполнение прерывается
       }
 
-      const data = await response.json()
+      // Проверяем Content-Type перед парсингом JSON
+      const contentType = response.headers.get('content-type')
+      const isJson = contentType && contentType.includes('application/json')
+      
+      let data
+      if (isJson) {
+        try {
+          data = await response.json()
+        } catch (parseError) {
+          // Если не удалось распарсить JSON, пробуем получить текст ошибки
+          const text = await response.text()
+          throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`)
+        }
+      } else {
+        // Если ответ не JSON, читаем как текст
+        const text = await response.text()
+        if (!response.ok) {
+          throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`)
+        }
+        // Если ответ успешный, но не JSON, возвращаем текст
+        return text
+      }
       
       if (!response.ok) {
-        throw new Error(data.detail || `HTTP error! status: ${response.status}`)
+        throw new Error(data.detail || data.message || `HTTP error! status: ${response.status}`)
       }
       
       return data
     } catch (error) {
       if (error.message.includes('Unauthorized')) {
         throw error
+      }
+      // Перебрасываем ошибку, если она уже обработана
+      if (error.message.includes('Server error')) {
+        throw error
+      }
+      // Обрабатываем ошибки парсинга JSON
+      if (error instanceof SyntaxError) {
+        throw new Error('Invalid JSON response from server. The server may be experiencing issues.')
       }
       throw new Error(error.message || 'Network error')
     }
@@ -47,7 +93,7 @@ class ApiClient {
   // Auth methods
   async login(login, password) {
     const formData = new FormData()
-    formData.append('username', login)
+    formData.append('login', login) // Бэкенд ожидает 'login', а не 'username'
     formData.append('password', password)
     
     const response = await fetch(`${this.baseURL}/login`, {
@@ -156,7 +202,7 @@ class ApiClient {
 
   async getCourse(courseId) {
     // Для преподавателей и студентов используем /me/courses, для админов - /admin/courses
-    const role = localStorage.getItem('role')
+    const role = storage.getRole()
     if (role === 'teacher' || role === 'student') {
       const courses = await this.request('/me/courses')
       return courses.find(c => c.id === parseInt(courseId))
@@ -186,7 +232,7 @@ class ApiClient {
   }
 
   async exportUsers(role = null, groupId = null) {
-    const token = localStorage.getItem('token')
+    const token = storage.getToken()
     const params = new URLSearchParams()
     if (role) params.append('role', role)
     if (groupId) params.append('group_id', groupId.toString())
@@ -197,31 +243,41 @@ class ApiClient {
     })
 
     if (response.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('role')
-      localStorage.removeItem('userId')
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
-      }
-      throw new Error('Unauthorized: Session expired or invalid token.')
+      this.handleUnauthorized() // Бросает исключение, выполнение прерывается
     }
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      try {
+        const error = await response.json()
+        throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      } catch (parseError) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
     }
 
     const blob = await response.blob()
     const contentDisposition = response.headers.get('Content-Disposition')
     const filename = contentDisposition?.split('filename=')[1]?.replace(/"/g, '') || 'users_export.xlsx'
     
+    const blobUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = blobUrl
     a.download = decodeURIComponent(filename)
+    a.style.display = 'none'
     document.body.appendChild(a)
+    
+    // Обработчик для очистки URL после начала скачивания
+    const handleClick = () => {
+      // Задержка перед очисткой, чтобы браузер успел начать скачивание
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl)
+        document.body.removeChild(a)
+        a.removeEventListener('click', handleClick)
+      }, 100)
+    }
+    
+    a.addEventListener('click', handleClick)
     a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(a.href)
   }
 
   // Course methods
@@ -265,7 +321,7 @@ class ApiClient {
   }
 
   async uploadMaterial(lectureId, file) {
-    const token = localStorage.getItem('token')
+    const token = storage.getToken()
     const formData = new FormData()
     formData.append('file', file)
 
@@ -278,9 +334,7 @@ class ApiClient {
     })
 
     if (response.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('role')
-      localStorage.removeItem('userId')
+      storage.clearAuth()
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login'
       }
@@ -308,7 +362,7 @@ class ApiClient {
   }
 
   async getMaterialContent(materialId) {
-    const token = localStorage.getItem('token')
+    const token = storage.getToken()
     const response = await fetch(`${this.baseURL}/materials/${materialId}/content`, {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -316,25 +370,23 @@ class ApiClient {
     })
 
     if (response.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('role')
-      localStorage.removeItem('userId')
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
-      }
-      throw new Error('Unauthorized: Session expired or invalid token.')
+      this.handleUnauthorized() // Бросает исключение, выполнение прерывается
     }
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      try {
+        const error = await response.json()
+        throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      } catch (parseError) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
     }
 
     return response.json()
   }
 
   async transcribeVideo(materialId) {
-    const token = localStorage.getItem('token')
+    const token = storage.getToken()
     const response = await fetch(`${this.baseURL}/materials/${materialId}/transcribe`, {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -342,18 +394,16 @@ class ApiClient {
     })
 
     if (response.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('role')
-      localStorage.removeItem('userId')
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
-      }
-      throw new Error('Unauthorized: Session expired or invalid token.')
+      this.handleUnauthorized() // Бросает исключение, выполнение прерывается
     }
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      try {
+        const error = await response.json()
+        throw new Error(error.detail || `HTTP error! status: ${response.status}`)
+      } catch (parseError) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
     }
 
     return response.json()

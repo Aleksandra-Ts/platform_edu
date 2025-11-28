@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import api from '../../services/api'
+import { parseDeadline } from '../../utils/dateUtils'
 import MultiSelect from '../admin_page/MultiSelect'
 import '../../styles/assignments.css'
 
@@ -187,16 +188,7 @@ function AssignmentsTab({ courseId, lectures }) {
       allTests.sort((a, b) => {
         const now = new Date()
         
-        // Функция для парсинга дедлайна
-        const parseDeadline = (deadlineString) => {
-          if (!deadlineString) return null
-          if (typeof deadlineString === 'string' && deadlineString.includes('T') && !deadlineString.includes('Z') && !deadlineString.includes('+')) {
-            // Формат YYYY-MM-DDTHH:mm (локальное время)
-            const [datePart, timePart] = deadlineString.split('T')
-            return new Date(`${datePart}T${timePart}`)
-          }
-          return new Date(deadlineString)
-        }
+        // Используем parseDeadline из утилит
         
         const dateA = a.deadline ? parseDeadline(a.deadline) : null
         const dateB = b.deadline ? parseDeadline(b.deadline) : null
@@ -230,17 +222,8 @@ function AssignmentsTab({ courseId, lectures }) {
       // Сохраняем все загруженные тесты
       setAllTestsList(allTests)
       
-      // Применяем фильтр, если выбран
-      if (selectedLectureId) {
-        const filtered = allTests.filter(test => {
-          const testLectureId = typeof test.lectureId === 'string' ? parseInt(test.lectureId) : test.lectureId
-          const selectedId = typeof selectedLectureId === 'string' ? parseInt(selectedLectureId) : selectedLectureId
-          return testLectureId === selectedId
-        })
-        setTestList(filtered)
-      } else {
-        setTestList(allTests)
-      }
+      // Фильтрация теперь происходит в отдельном useEffect при изменении selectedLectureIds
+      // Здесь просто сохраняем все тесты, фильтрация применится автоматически
     } catch (err) {
       console.error('Ошибка загрузки тестов:', err)
       setTestList([])
@@ -314,27 +297,7 @@ function AssignmentsTab({ courseId, lectures }) {
 }
 
 function TestListItem({ test, onClick }) {
-  // Функция для парсинга дедлайна (поддерживает формат YYYY-MM-DDTHH:mm и ISO)
-  const parseDeadline = (deadlineString) => {
-    if (!deadlineString) return null
-    // Если это уже объект Date, возвращаем его
-    if (deadlineString instanceof Date) return deadlineString
-    // Если это не строка, пытаемся преобразовать
-    if (typeof deadlineString !== 'string') {
-      try {
-        return new Date(deadlineString)
-      } catch (e) {
-        return null
-      }
-    }
-    // Если формат YYYY-MM-DDTHH:mm (локальное время, без таймзоны)
-    if (deadlineString.includes('T') && !deadlineString.includes('Z') && !deadlineString.includes('+')) {
-      const [datePart, timePart] = deadlineString.split('T')
-      return new Date(`${datePart}T${timePart}`)
-    }
-    // Иначе парсим как ISO или другой формат
-    return new Date(deadlineString)
-  }
+  // Используем parseDeadline из утилит
 
   const formatDeadline = (deadline) => {
     if (!deadline) return 'Без дедлайна'
@@ -494,19 +457,7 @@ function TeacherAssignmentsTab({ courseId, lectures }) {
     setTestDetails(null)
   }
 
-  const parseDeadline = (deadlineString) => {
-    if (!deadlineString) return null
-    try {
-      if (deadlineString.includes('T')) {
-        return new Date(deadlineString)
-      } else if (deadlineString.includes('-') && deadlineString.includes(':')) {
-        return new Date(deadlineString)
-      }
-      return new Date(deadlineString)
-    } catch (e) {
-      return null
-    }
-  }
+  // Используем parseDeadline из утилит
 
   return (
     <div className="assignments-tab">
@@ -524,7 +475,6 @@ function TeacherAssignmentsTab({ courseId, lectures }) {
                 key={test.lectureId}
                 test={test}
                 onClick={() => handleTestClick(test)}
-                parseDeadline={parseDeadline}
               />
             ))}
           </div>
@@ -552,7 +502,8 @@ function TeacherAssignmentsTab({ courseId, lectures }) {
   )
 }
 
-function TeacherTestListItem({ test, onClick, parseDeadline }) {
+function TeacherTestListItem({ test, onClick }) {
+  // Используем parseDeadline из утилит
   const deadline = parseDeadline(test.testDeadline)
   const deadlinePassed = deadline ? deadline < new Date() : false
 

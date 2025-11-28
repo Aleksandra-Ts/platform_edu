@@ -1,34 +1,35 @@
 import { useState, useEffect } from 'react'
+import storage from '../services/storage'
 
 export function useAuth() {
-  const [token, setToken] = useState(localStorage.getItem('token'))
-  const [role, setRole] = useState(localStorage.getItem('role'))
-  const [userId, setUserId] = useState(localStorage.getItem('userId'))
+  const [token, setToken] = useState(storage.getToken())
+  const [role, setRole] = useState(storage.getRole())
+  const [userId, setUserId] = useState(storage.getUserId())
 
   useEffect(() => {
     const handleStorageChange = () => {
-      setToken(localStorage.getItem('token'))
-      setRole(localStorage.getItem('role'))
-      setUserId(localStorage.getItem('userId'))
+      setToken(storage.getToken())
+      setRole(storage.getRole())
+      setUserId(storage.getUserId())
     }
 
+    // Слушаем изменения в других вкладках
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
   }, [])
 
   const login = (newToken, newRole, newUserId) => {
-    localStorage.setItem('token', newToken)
-    localStorage.setItem('role', newRole)
-    localStorage.setItem('userId', newUserId)
+    storage.setAuthData(newToken, newRole, newUserId)
     setToken(newToken)
     setRole(newRole)
     setUserId(newUserId)
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('role')
-    localStorage.removeItem('userId')
+    storage.clearAuth()
     setToken(null)
     setRole(null)
     setUserId(null)
@@ -44,7 +45,12 @@ export function useAuth() {
     login,
     logout,
     isAuthenticated,
-    isAdmin
+    isAdmin,
+    // Дополнительные методы используют state, а не storage напрямую
+    // для избежания рассинхронизации
+    getToken: () => token,
+    getRole: () => role,
+    getUserId: () => userId
   }
 }
 

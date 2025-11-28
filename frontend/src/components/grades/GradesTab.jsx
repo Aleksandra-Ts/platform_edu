@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
+import { parseDeadline } from '../../utils/dateUtils'
 import '../../styles/grades.css'
 
 function GradesTab({ profile }) {
@@ -249,21 +250,7 @@ function GradesTab({ profile }) {
 function TestResultsModal({ lecture, attempts, onClose }) {
   // Получаем данные лекции для проверки дедлайна и настроек показа ответов
   const lectureData = lecture.lectureData || {}
-  const parseDeadline = (deadlineString) => {
-    if (!deadlineString) return null
-    try {
-      // Пробуем разные форматы
-      if (deadlineString.includes('T')) {
-        return new Date(deadlineString)
-      } else if (deadlineString.includes('-') && deadlineString.includes(':')) {
-        // Формат YYYY-MM-DDTHH:mm
-        return new Date(deadlineString)
-      }
-      return new Date(deadlineString)
-    } catch (e) {
-      return null
-    }
-  }
+  // Используем parseDeadline из утилит
   
   const deadlinePassed = lectureData.test_deadline ? parseDeadline(lectureData.test_deadline) < new Date() : false
   const shouldShowAnswers = lectureData.test_show_answers && deadlinePassed

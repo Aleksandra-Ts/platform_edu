@@ -1,13 +1,27 @@
 import PasswordField from './PasswordField'
 
-function CreateStudentForm({ form, setForm, onSubmit, generatePassword, groups }) {
+/**
+ * Универсальная форма для создания пользователя (преподавателя или студента)
+ * @param {Object} props
+ * @param {Object} props.form - Объект формы с полями пользователя
+ * @param {Function} props.setForm - Функция для обновления формы
+ * @param {Function} props.onSubmit - Обработчик отправки формы
+ * @param {Function} props.generatePassword - Функция генерации пароля
+ * @param {string} props.userType - Тип пользователя: 'teacher' | 'student'
+ * @param {Array} props.groups - Массив групп (только для студентов)
+ */
+function CreateUserForm({ form, setForm, onSubmit, generatePassword, userType, groups = [] }) {
   const handleChange = (field, value) => {
     setForm({ ...form, [field]: value })
   }
 
+  const isStudent = userType === 'student'
+  const title = isStudent ? 'Добавить студента' : 'Добавить преподавателя'
+  const buttonText = isStudent ? 'Создать студента' : 'Создать преподавателя'
+
   return (
     <div className="create-form-section">
-      <h2 className="section-title">Добавить студента</h2>
+      <h2 className="section-title">{title}</h2>
       <form onSubmit={onSubmit} className="auth-form">
         <label className="form-field">
           <span className="field-label">Логин</span>
@@ -56,24 +70,26 @@ function CreateStudentForm({ form, setForm, onSubmit, generatePassword, groups }
             placeholder="Необязательно"
           />
         </label>
-        <label className="form-field">
-          <span className="field-label">Группа</span>
-          <select
-            value={form.group_id}
-            onChange={(e) => handleChange('group_id', e.target.value)}
-            required
-          >
-            <option value="">Выберите группу</option>
-            {groups.map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="btn-primary">Создать студента</button>
+        {isStudent && (
+          <label className="form-field">
+            <span className="field-label">Группа</span>
+            <select
+              value={form.group_id}
+              onChange={(e) => handleChange('group_id', e.target.value)}
+              required
+            >
+              <option value="">Выберите группу</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button type="submit" className="btn-primary">{buttonText}</button>
       </form>
     </div>
   )
 }
 
-export default CreateStudentForm
+export default CreateUserForm
 

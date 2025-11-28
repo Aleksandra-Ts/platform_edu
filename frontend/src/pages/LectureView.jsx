@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+import { useNavigation } from '../hooks/useNavigation'
+import { parseDeadline } from '../utils/dateUtils'
+import Breadcrumbs from '../components/common/Breadcrumbs'
 import TestCard from '../components/assignments/TestCard'
 import '../styles/lecture-view.css'
 
 function LectureView() {
   const { courseId, lectureId } = useParams()
   const navigate = useNavigate()
-  const { role } = useAuth()
+  const { role, getToken } = useAuth()
+  const { goHome, goToCourses } = useNavigation()
   const [lecture, setLecture] = useState(null)
   const [course, setCourse] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -20,17 +24,14 @@ function LectureView() {
   const [remainingAttempts, setRemainingAttempts] = useState(null)
   const [canViewResults, setCanViewResults] = useState(false)
 
-  // Функция для парсинга дедлайна (поддерживает формат YYYY-MM-DDTHH:mm и ISO)
-  const parseDeadline = (deadlineString) => {
-    if (!deadlineString) return null
-    // Если формат YYYY-MM-DDTHH:mm (локальное время, без таймзоны)
-    if (deadlineString.includes('T') && !deadlineString.includes('Z') && !deadlineString.includes('+')) {
-      const [datePart, timePart] = deadlineString.split('T')
-      return new Date(`${datePart}T${timePart}`)
-    }
-    // Иначе парсим как ISO или другой формат
-    return new Date(deadlineString)
-  }
+  // Мемоизируем вычисления дедлайна
+  const parsedDeadline = useMemo(() => {
+    return lecture?.test_deadline ? parseDeadline(lecture.test_deadline) : null
+  }, [lecture?.test_deadline])
+
+  const deadlinePassed = useMemo(() => {
+    return parsedDeadline ? parsedDeadline < new Date() : false
+  }, [parsedDeadline])
 
   useEffect(() => {
     loadLecture()
@@ -64,7 +65,7 @@ function LectureView() {
         // 2. Попытки закончились ИЛИ дедлайн истек
         // 3. Дедлайн истек (чтобы показывать правильные ответы)
         // 4. Разрешено показывать ответы
-        const deadlinePassed = lecture?.test_deadline ? parseDeadline(lecture.test_deadline) < new Date() : false
+        // Используем мемоизированное значение deadlinePassed
         const allAttemptsUsed = remaining <= 0
         
         // Результаты можно просматривать если:
@@ -105,29 +106,8 @@ function LectureView() {
     }
   }
 
-  const handleHomeClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else if (currentRole === 'admin') {
-      navigate('/admin')
-    } else {
-      navigate('/profile')
-    }
-  }
-
-  const handleCoursesClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard?view=courses')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else {
-      navigate('/profile')
-    }
-  }
+  const handleHomeClick = goHome
+  const handleCoursesClick = goToCourses
 
   const handleCourseClick = () => {
     navigate(`/course/${courseId}`)
@@ -157,21 +137,14 @@ function LectureView() {
     <div className="lecture-view-page">
       <div className="lecture-view-container">
         <div className="lecture-view-header">
-          <div className="breadcrumbs">
-            <span className="breadcrumb-item" onClick={handleHomeClick}>
-              Главная
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item" onClick={handleCoursesClick}>
-              Мои курсы
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item" onClick={handleCourseClick}>
-              {course?.name || 'Курс'}
-            </span>
-            <span className="breadcrumb-separator">/</span>
-            <span className="breadcrumb-item active">{lecture.name}</span>
-          </div>
+          <Breadcrumbs
+            items={[
+              { label: 'Главная', onClick: handleHomeClick },
+              { label: 'Мои курсы', onClick: handleCoursesClick },
+              { label: course?.name || 'Курс', onClick: handleCourseClick },
+              { label: lecture.name, active: true }
+            ]}
+          />
         </div>
 
         <div className="lecture-view-title-section">
@@ -198,7 +171,7 @@ function LectureView() {
                   )}
                   {lecture.test_deadline && (
                     <span className="test-deadline-info">
-                      Дедлайн: {parseDeadline(lecture.test_deadline)?.toLocaleString('ru-RU', {
+                      Дедлайн: {parsedDeadline?.toLocaleString('ru-RU', {
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',
@@ -206,7 +179,7 @@ function LectureView() {
                         minute: '2-digit',
                         second: '2-digit'
                       })}
-                      {parseDeadline(lecture.test_deadline) < new Date() && (
+                      {deadlinePassed && (
                         <span className="test-deadline-expired">✓ Истек</span>
                       )}
                     </span>
@@ -217,7 +190,7 @@ function LectureView() {
             
             <div className="test-actions-container">
               {(() => {
-                const deadlinePassed = lecture.test_deadline ? parseDeadline(lecture.test_deadline) < new Date() : false
+                // Используем мемоизированное значение deadlinePassed
                 const allAttemptsUsed = remainingAttempts !== null && remainingAttempts <= 0
                 
                 // Показываем кнопку "Решить тест" если есть оставшиеся попытки И дедлайн не истек
@@ -264,7 +237,7 @@ function LectureView() {
                 if (hasAttempts && allAttemptsUsed && !deadlinePassed) {
                   return (
                     <div className="test-warning-message test-warning-yellow">
-                      ⚠️ Все попытки использованы. Результаты будут доступны после окончания дедлайна ({parseDeadline(lecture.test_deadline)?.toLocaleString('ru-RU', {
+                      ⚠️ Все попытки использованы. Результаты будут доступны после окончания дедлайна ({parsedDeadline?.toLocaleString('ru-RU', {
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',
@@ -410,8 +383,17 @@ function TestResultsViewer({ attempts, lecture, onClose }) {
   // Правильные ответы показываются если:
   // 1. Дедлайн истек
   // 2. Разрешено в настройках (test_show_answers = true)
-  const deadlinePassed = lecture?.test_deadline ? parseDeadline(lecture.test_deadline) < new Date() : false
-  const shouldShowAnswers = lecture?.test_show_answers && deadlinePassed
+  // Используем мемоизированное значение deadlinePassed из родительского компонента
+  // Если это отдельный компонент, вычисляем заново через useMemo
+  const localParsedDeadline = useMemo(() => {
+    return lecture?.test_deadline ? parseDeadline(lecture.test_deadline) : null
+  }, [lecture?.test_deadline])
+  
+  const localDeadlinePassed = useMemo(() => {
+    return localParsedDeadline ? localParsedDeadline < new Date() : false
+  }, [localParsedDeadline])
+  
+  const shouldShowAnswers = lecture?.test_show_answers && localDeadlinePassed
   
   // Используем show_answers из API, если есть, иначе вычисляем
   const showAnswers = attempts.show_answers !== undefined ? attempts.show_answers : shouldShowAnswers
@@ -527,6 +509,7 @@ function TestResultsViewer({ attempts, lecture, onClose }) {
 }
 
 function MaterialViewer({ material, index, lecture }) {
+  const { getToken } = useAuth()
   const [fileText, setFileText] = useState(null)
   const [fileBlobUrl, setFileBlobUrl] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -546,15 +529,17 @@ function MaterialViewer({ material, index, lecture }) {
       loadFileAsBlob()
     }
     
-    // Cleanup blob URL при размонтировании
+    // Cleanup blob URL при размонтировании или изменении material
     return () => {
-      if (fileBlobUrl) {
-        URL.revokeObjectURL(fileBlobUrl)
-        setFileBlobUrl(null)
-      }
+      // Используем текущее значение fileBlobUrl через замыкание
+      setFileBlobUrl(prevUrl => {
+        if (prevUrl) {
+          URL.revokeObjectURL(prevUrl)
+        }
+        return null
+      })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [material.id])
+  }, [material.id, material.file_type])
 
   const loadFileText = async () => {
     try {
@@ -579,7 +564,7 @@ function MaterialViewer({ material, index, lecture }) {
   const loadFileAsBlob = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const API_BASE = import.meta.env.DEV ? '/api' : ''
       const url = `${API_BASE}/materials/${material.id}/file`
       

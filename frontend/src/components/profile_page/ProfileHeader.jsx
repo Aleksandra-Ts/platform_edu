@@ -1,32 +1,18 @@
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useNavigation } from '../../hooks/useNavigation'
+import Breadcrumbs from '../common/Breadcrumbs'
 
 function ProfileHeader() {
-  const navigate = useNavigate()
-  const { role } = useAuth()
-  
-  const handleHomeClick = () => {
-    const currentRole = role || localStorage.getItem('role')
-    if (currentRole === 'teacher') {
-      navigate('/dashboard')
-    } else if (currentRole === 'student') {
-      navigate('/student-dashboard')
-    } else if (currentRole === 'admin') {
-      navigate('/admin')
-    } else {
-      navigate('/')
-    }
-  }
+  const { goHome } = useNavigation()
 
   return (
     <div className="profile-head">
-      <div className="breadcrumbs">
-        <span className="breadcrumb-item" onClick={handleHomeClick}>
-          Главная
-        </span>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-item active">Профиль</span>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Главная', onClick: goHome },
+          { label: 'Профиль', active: true }
+        ]}
+      />
     </div>
   )
 }

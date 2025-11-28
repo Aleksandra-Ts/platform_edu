@@ -7,8 +7,20 @@ from app.core.config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
-# Создание движка и сессии
-engine = create_engine(DATABASE_URL)
+# Создание движка и сессии с настройками connection pooling
+# Настройки для поддержки 200 одновременных пользователей:
+# - pool_size: базовый размер пула соединений
+# - max_overflow: дополнительные соединения сверх pool_size
+# - pool_pre_ping: проверка соединений перед использованием (избегает ошибок с разорванными соединениями)
+# - pool_recycle: переподключение через час (избегает проблем с таймаутами БД)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=20,              # Базовый размер пула (20 соединений)
+    max_overflow=40,           # Дополнительные соединения (всего до 60)
+    pool_pre_ping=True,        # Проверка соединений перед использованием
+    pool_recycle=3600,         # Переподключение через час (избегает таймаутов)
+    echo=False                 # Не логировать SQL запросы
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

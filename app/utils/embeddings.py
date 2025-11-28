@@ -1,10 +1,14 @@
 """Утилиты для генерации эмбеддингов текста через GigaChat Embeddings API"""
 import os
 import logging
+import threading
 from typing import List, Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Семафор для ограничения одновременных запросов к GigaChat API (максимум 10)
+_gigachat_semaphore = threading.Semaphore(10)
 
 # Попытка импортировать GigaChatEmbeddings
 try:
@@ -33,15 +37,16 @@ def get_embedding_model() -> Optional[GigaChatEmbeddings]:
     
     if _embedding_model is None:
         try:
-            api_key = os.getenv("GIGA_API_KEY")
-            if not api_key:
+            from app.core.config import GIGA_API_KEY, GIGACHAT_EMBEDDINGS_MODEL, GIGACHAT_SCOPE
+            
+            if not GIGA_API_KEY:
                 logger.error("GIGA_API_KEY не установлен в переменных окружения")
                 return None
             
             _embedding_model = GigaChatEmbeddings(
-                credentials=api_key,
-                model="Embeddings",
-                scope="GIGACHAT_API_CORP",
+                credentials=GIGA_API_KEY,
+                model=GIGACHAT_EMBEDDINGS_MODEL,
+                scope=GIGACHAT_SCOPE,
                 verify_ssl_certs=False,
             )
             logger.info("Модель GigaChat Embeddings инициализирована")
@@ -121,7 +126,9 @@ def generate_embedding(text: str, use_chunks: bool = True, chunk_size: int = 200
         
         # Если текст короткий или не используем чанки - генерируем напрямую
         if not use_chunks or len(text) <= chunk_size:
-            embedding = model.embed_query(text)
+            # Ограничиваем одновременные запросы к GigaChat через семафор
+            with _gigachat_semaphore:
+                embedding = model.embed_query(text)
             if len(embedding) != 1024:
                 logger.warning(f"Неожиданная размерность эмбеддинга: {len(embedding)}, ожидалось 1024")
             return embedding
@@ -133,7 +140,9 @@ def generate_embedding(text: str, use_chunks: bool = True, chunk_size: int = 200
         embeddings = []
         for i, chunk in enumerate(chunks):
             try:
-                chunk_embedding = model.embed_query(chunk)
+                # Ограничиваем одновременные запросы к GigaChat через семафор
+                with _gigachat_semaphore:
+                    chunk_embedding = model.embed_query(chunk)
                 if chunk_embedding and len(chunk_embedding) == 1024:
                     embeddings.append(chunk_embedding)
                     logger.debug(f"Сгенерирован эмбеддинг для чанка {i+1}/{len(chunks)}")
@@ -193,7 +202,9 @@ def generate_embeddings_batch(texts: List[str]) -> List[Optional[List[float]]]:
             return [None] * len(texts)
         
         # Генерируем эмбеддинги батчем через GigaChat API
-        embeddings = model.embed_documents(non_empty_texts)
+        # Ограничиваем одновременные запросы к GigaChat через семафор
+        with _gigachat_semaphore:
+            embeddings = model.embed_documents(non_empty_texts)
         
         # Преобразуем в список списков
         result = []

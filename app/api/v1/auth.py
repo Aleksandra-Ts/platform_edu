@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, pwd_context, validate_password_strength
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.models import User
 from app.schemas import ChangePasswordRequest
 
@@ -11,6 +12,7 @@ router = APIRouter()
 
 
 @router.post("/login")
+@limiter.limit("5/minute")
 def login(
     request: Request,
     login: str = Form(...),
@@ -35,7 +37,9 @@ def login(
 
 
 @router.post("/change_password/{user_id}")
+@limiter.limit("10/minute")
 def change_password(
+    request: Request,
     user_id: int,
     payload: ChangePasswordRequest,
     db: Session = Depends(get_db),

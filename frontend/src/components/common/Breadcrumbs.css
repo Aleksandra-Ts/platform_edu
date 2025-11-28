@@ -1,0 +1,34 @@
+/* Breadcrumbs Component Styles */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.breadcrumb-item {
+  color: rgba(11, 47, 36, 0.6);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.breadcrumb-item:hover {
+  color: #0f6b51;
+  text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+  color: #0b3d2c;
+  cursor: default;
+  font-weight: 500;
+}
+
+.breadcrumb-item.active:hover {
+  text-decoration: none;
+}
+
+.breadcrumb-separator {
+  color: rgba(11, 47, 36, 0.4);
+}
+

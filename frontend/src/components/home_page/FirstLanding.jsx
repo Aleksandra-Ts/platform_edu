@@ -1,24 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { navigateToHome } from '../../utils/navigation'
 
 function FirstLanding() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, role } = useAuth()
   const navigate = useNavigate()
 
   const handleStartLearning = (e) => {
     e.preventDefault()
     if (isAuthenticated()) {
       // Редирект на dashboard в зависимости от роли
-      const role = localStorage.getItem('role')
-      if (role === 'teacher') {
-        navigate('/dashboard')
-      } else if (role === 'student') {
-        navigate('/student-dashboard')
-      } else if (role === 'admin') {
-        navigate('/admin')
-      } else {
-        navigate('/profile')
-      }
+      navigateToHome(navigate, role)
     } else {
       navigate('/login')
     }

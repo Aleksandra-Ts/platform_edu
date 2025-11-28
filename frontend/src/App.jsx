@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Profile from './pages/Profile'
@@ -9,8 +10,17 @@ import CourseDetail from './pages/CourseDetail'
 import LectureView from './pages/LectureView'
 import ChangePassword from './pages/ChangePassword'
 import { useAuth } from './hooks/useAuth'
+import { getCurrentRole } from './utils/navigation'
+import api from './services/api'
 
 function App() {
+  const navigate = useNavigate()
+  
+  // Устанавливаем обработчик навигации для api.js
+  useEffect(() => {
+    api.setNavigationHandler(navigate)
+  }, [navigate])
+
   return (
     <Routes>
       <Route path="/" element={<Home />} />
@@ -69,9 +79,10 @@ function App() {
 }
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth()
+  const { token } = useAuth()
+  const isAuth = useMemo(() => !!token, [token])
   
-  if (!isAuthenticated()) {
+  if (!isAuth) {
     return <Navigate to="/login" replace />
   }
   
@@ -79,13 +90,33 @@ function ProtectedRoute({ children }) {
 }
 
 function AdminRoute({ children }) {
-  const { isAuthenticated, isAdmin } = useAuth()
+  const { token, role } = useAuth()
+  const isAuth = useMemo(() => !!token, [token])
+  const isAdminRole = useMemo(() => role === 'admin', [role])
   
-  if (!isAuthenticated()) {
+  if (!isAuth) {
     return <Navigate to="/login" replace />
   }
   
-  if (!isAdmin()) {
+  if (!isAdminRole) {
+    return <Navigate to="/profile" replace />
+  }
+  
+  return children
+}
+
+// Универсальный компонент для маршрутов с проверкой роли
+function RoleRoute({ children, requiredRole }) {
+  const { token, role } = useAuth()
+  const isAuth = useMemo(() => !!token, [token])
+  const currentRole = useMemo(() => getCurrentRole(role), [role])
+  const hasRequiredRole = useMemo(() => currentRole === requiredRole, [currentRole, requiredRole])
+  
+  if (!isAuth) {
+    return <Navigate to="/login" replace />
+  }
+  
+  if (!hasRequiredRole) {
     return <Navigate to="/profile" replace />
   }
   
@@ -93,41 +124,11 @@ function AdminRoute({ children }) {
 }
 
 function TeacherRoute({ children }) {
-  const { isAuthenticated, role } = useAuth()
-  
-  // Проверяем напрямую из localStorage, чтобы избежать редиректа при перезагрузке
-  const token = localStorage.getItem('token')
-  const storedRole = localStorage.getItem('role')
-  
-  if (!token) {
-    return <Navigate to="/login" replace />
-  }
-  
-  // Используем role из useAuth, если он есть, иначе из localStorage
-  const currentRole = role || storedRole
-  if (currentRole !== 'teacher') {
-    return <Navigate to="/profile" replace />
-  }
-  
-  return children
+  return <RoleRoute requiredRole="teacher">{children}</RoleRoute>
 }
 
 function StudentRoute({ children }) {
-  const { isAuthenticated, role } = useAuth()
-  
-  const token = localStorage.getItem('token')
-  const storedRole = localStorage.getItem('role')
-  
-  if (!token) {
-    return <Navigate to="/login" replace />
-  }
-  
-  const currentRole = role || storedRole
-  if (currentRole !== 'student') {
-    return <Navigate to="/profile" replace />
-  }
-  
-  return children
+  return <RoleRoute requiredRole="student">{children}</RoleRoute>
 }
 
 export default App

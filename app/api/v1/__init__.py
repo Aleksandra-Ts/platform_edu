@@ -1,4 +1,3 @@
-"""API версия 1"""
 from fastapi import APIRouter
 
 from app.api.v1 import admin as admin_router
